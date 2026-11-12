@@ -1,0 +1,29 @@
+# Secrets and env — never commit keys
+.streamlit/secrets.toml
+.env
+.env.*
+*.pem
+secrets.yaml
+
+# Local caches and runtime
+.extract_cache/
+data/feedback.json
+__pycache__/
+*.pyc
+.pytest_cache/
+.venv/
+venv/
+.env/
+
+# Bill photos and other PII
+*.jpg
+*.jpeg
+*.png
+*.heic
+*.pdf
+!docs/**
+
+# OS / editor
+.DS_Store
+.idea/
+.vscode/
