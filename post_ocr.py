@@ -38,6 +38,157 @@ def _is_typical_surcharge(v: Optional[float]) -> bool:
     return any(abs(float(v) - s) <= 0.05 for s in SURCHARGE_TYPICAL)
 
 
+# Line items that add toward the printed bill (subsidy is subtracted).
+SUM_KEYS = (
+    "energy_charges", "fixed_charges", "customer_charges", "electricity_duty",
+    "interest_on_ed", "surcharge", "trueup_charges", "fsa_fca", "adjustment",
+    "loss_gain",
+)
+# Prefer to keep these if a duplicate must be dropped.
+KEEP_PRIORITY = {
+    "energy_charges": 0,
+    "fixed_charges": 1,
+    "customer_charges": 2,
+    "electricity_duty": 3,
+    "trueup_charges": 4,
+    "loss_gain": 5,
+    "surcharge": 6,
+    "fsa_fca": 7,
+    "adjustment": 8,
+    "interest_on_ed": 9,
+}
+# Optional / often-zero lines we may set to 0 when that uniquely fixes the sum.
+OPTIONAL_ZERO_KEYS = ("surcharge", "fsa_fca", "adjustment", "interest_on_ed")
+SUM_MATCH_TOL = 1.0  # rupees
+
+
+def line_sum(bill: Dict[str, Any]) -> float:
+    """Signed sum of charge lines minus subsidy. 0 is kept; only None is skipped."""
+    total = 0.0
+    for k in SUM_KEYS:
+        v = _num(bill.get(k))
+        if v is not None:
+            total += v
+    sub = _num(bill.get("subsidy"))
+    if sub:
+        total -= sub
+    return round(total, 2)
+
+
+def printed_bill_amount(bill: Dict[str, Any]) -> Optional[float]:
+    for k in ("bill_amount", "bill_amount_printed", "total_due"):
+        v = _num(bill.get(k))
+        if v is not None:
+            return v
+    return None
+
+
+def _sum_matches(bill: Dict[str, Any], printed: float, tol: float = SUM_MATCH_TOL) -> bool:
+    return abs(line_sum(bill) - printed) <= tol
+
+
+def _priority(key: str) -> int:
+    return KEEP_PRIORITY.get(key, 50)
+
+
+def reconcile_line_sum(bill: Dict[str, Any], notes: Optional[List[str]] = None) -> Tuple[Dict[str, Any], List[str]]:
+    """Fix duplicated or extra line items when the printed total does not add up.
+
+    If one component equals another (e.g. surcharge copied from PP TRUEUP) or
+    setting exactly one optional component to 0 makes the sum match within ₹1,
+    auto-correct and record a note. Genuine unexplained mismatches are left
+    for self-checks / the 1912 warning.
+    Also snaps Loss/Gain to a residual of at most ₹1 (rounding).
+    """
+    b = dict(bill)
+    notes = list(notes or [])
+    printed = printed_bill_amount(b)
+    if printed is None:
+        return b, notes
+
+    if not _sum_matches(b, printed):
+        # (a) duplicated value across two lines — drop the lower-priority copy
+        values = {k: _num(b.get(k)) for k in SUM_KEYS}
+        trials: List[str] = []
+        seen_pairs = set()
+        for k1, v1 in values.items():
+            if v1 is None or abs(v1) <= 0.005:
+                continue
+            for k2, v2 in values.items():
+                if k2 <= k1 or v2 is None:
+                    continue
+                if not _close(v1, v2, tol=0.05):
+                    continue
+                drop = k1 if _priority(k1) > _priority(k2) else k2
+                if drop in seen_pairs:
+                    continue
+                seen_pairs.add(drop)
+                trial = dict(b)
+                trial[drop] = 0
+                if _sum_matches(trial, printed):
+                    trials.append(drop)
+        # Prefer dropping surcharge when it is a copy of true-up
+        if "surcharge" in trials:
+            trials = ["surcharge"]
+        elif len(set(trials)) == 1:
+            trials = [trials[0]]
+        else:
+            trials = list(dict.fromkeys(trials))
+            if len(trials) != 1:
+                trials = []
+        if len(trials) == 1:
+            drop = trials[0]
+            old = _num(b.get(drop))
+            b[drop] = 0
+            notes.append(
+                f"auto-correct chesam: {drop} ₹{old:.2f} was a duplicate of another line; "
+                f"set to ₹0 so charges sum to ₹{printed:.2f}"
+                f" / {drop} ఒకే మొత్తం రెండు లైన్లలో వచ్చింది, ₹0 పెట్టాం"
+            )
+
+        # (b) setting exactly one optional component to 0 uniquely fixes the sum
+        if not _sum_matches(b, printed):
+            zero_hits = []
+            for k in OPTIONAL_ZERO_KEYS:
+                v = _num(b.get(k))
+                if v is None or abs(v) <= 0.005:
+                    continue
+                # Keep a typical ₹10/₹25 DPS unless it is clearly a duplicate
+                # (already handled above). Do not wipe a real late-payment fee.
+                if k == "surcharge" and _is_typical_surcharge(v):
+                    continue
+                trial = dict(b)
+                trial[k] = 0
+                if _sum_matches(trial, printed):
+                    zero_hits.append(k)
+            if len(zero_hits) == 1:
+                k = zero_hits[0]
+                old = _num(b.get(k))
+                b[k] = 0
+                notes.append(
+                    f"auto-correct chesam: {k} ₹{old:.2f} set to ₹0 so charges sum to ₹{printed:.2f}"
+                    f" / {k} ₹0 పెట్టాం, మొత్తం సరిపోయింది"
+                )
+
+    # (c) Loss/Gain rounding residual (at most ₹1)
+    if _sum_matches(b, printed):
+        current_lg = _num(b.get("loss_gain"))
+        without = line_sum({**b, "loss_gain": 0})
+        residual = round(printed - without, 2)
+        if abs(residual) <= SUM_MATCH_TOL:
+            if current_lg is None or not _close(current_lg, residual, tol=0.005):
+                # Only write a tiny rounding residual; don't invent a missing charge.
+                b["loss_gain"] = residual
+                if current_lg is None or not _close(current_lg, residual, tol=0.05):
+                    notes.append(
+                        f"auto-correct chesam: Loss/Gain set to ₹{residual:.2f} so the rounding "
+                        f"matches the printed bill ₹{printed:.2f}"
+                        f" / రౌండింగ్ (Loss/Gain) ₹{residual:.2f} పెట్టాం"
+                    )
+
+    return b, notes
+
+
 def _leading_digit_variants(value: int) -> List[int]:
     s = str(int(abs(value)))
     if len(s) < 2:
@@ -304,6 +455,12 @@ def apply_post_ocr_corrections(bill: Dict[str, Any]) -> Tuple[Dict[str, Any], Li
             "auto-correct chesam: " + due_note
             + " / డ్యూ డేట్ బిల్లు తేదీకి సరిపోలలేదు, తీసివేసాం"
         )
+
+    # ------------------------------------------------------------------
+    # 7. Reconcile line-item sum vs printed bill (duplicates, optional zeros,
+    #    Loss/Gain rounding). Must run after other field moves.
+    # ------------------------------------------------------------------
+    b, notes = reconcile_line_sum(b, notes)
 
     return b, notes
 

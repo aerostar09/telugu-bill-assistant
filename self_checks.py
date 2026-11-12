@@ -10,14 +10,15 @@ Inspect the image carefully. Return ONLY JSON matching the schema.
 Rules:
 - Convert currency/units to numbers (strip ₹, Rs., commas).
 - If a field is not visible or unreadable, set it to null. Do NOT guess.
-- trueup_charges = PP TRUEUP / True-up line (often FY 2022-23); trueup_units = units on that line.
+- Read each printed charge line independently. Never copy one line's amount onto a different line.
+- trueup_charges = ONLY the PP TRUEUP / True-up / FY 2022-23 line; trueup_units = units printed on that same line (e.g. 96 × 30P = 28.80).
+- surcharge = ONLY the separate Surcharge / Delayed Payment Surcharge / DPS line. If that line is 0.00, surcharge is 0. Do NOT copy the PP TRUEUP amount into surcharge.
 - present_reading_date / prev_reading_date = Date column on the Present / Previous reading rows (not the bill date).
 - unit_history = the 12–13 month consumption table or chart if printed (year, month, units, estimated=true if billed on average). null if not visible — do NOT invent months.
 - average_month_units = 'Average Month Units' if printed.
 - acd_due / acd_surcharge = ACD Due or ACD Surcharge line if printed (0 is valid).
-- loss_gain = Loss/Gain rounding line (can be negative).
-- surcharge = Delayed Payment Surcharge / DPS only (NOT FSA/FCA).
-- fsa_fca = Fuel Surcharge / FCA only.
+- loss_gain = the Loss/Gain (rounding) line as printed, including a negative sign (e.g. -0.24).
+- fsa_fca = Fuel Surcharge / FCA only (not DPS, not true-up).
 - is_electricity_bill=false if this is not a TG electricity bill photo.
 - image_quality one of: clear, cropped, crumpled, blurry, unknown.
 """.strip()
@@ -56,23 +57,14 @@ def run_self_checks(b: Dict[str, Any]) -> Dict[str, Any]:
     if b.get("prev_reading") is not None and b.get("present_reading") is not None and b.get("units") is not None:
         units_eq_delta = (b["present_reading"] - b["prev_reading"]) == b["units"]
 
-    parts = [
-        b.get("energy_charges") or 0,
-        b.get("fixed_charges") or 0,
-        b.get("customer_charges") or 0,
-        b.get("electricity_duty") or 0,
-        b.get("interest_on_ed") or 0,
-        b.get("surcharge") or 0,
-        b.get("trueup_charges") or 0,
-        b.get("fsa_fca") or 0,
-        b.get("adjustment") or 0,
-        b.get("loss_gain") or 0,
-    ]
-    subsidy = b.get("subsidy") or 0
-    sum_calc = round(sum(parts) - subsidy, 2)
+    from post_ocr import line_sum, printed_bill_amount
+    sum_calc = line_sum(b)
     sum_eq_bill = None
-    if b.get("bill_amount") is not None:
-        sum_eq_bill = abs(sum_calc - b["bill_amount"]) <= 1.0
+    printed = b.get("bill_amount")
+    if printed is None:
+        printed = printed_bill_amount(b)
+    if printed is not None:
+        sum_eq_bill = abs(sum_calc - float(printed)) <= 1.0
 
     trueup_eq_30p = None
     if b.get("trueup_units") is not None and b.get("trueup_charges") is not None:
