@@ -51,6 +51,14 @@ from discom_dashboard import render_discom_dashboard
 from tariff import estimate_next_with_trueup
 from draft_features import trueup_explainer, jump_card_text, cliff_card_text
 from demo_data import lakshmi_demo_bundle
+from terms import t
+from citizen_ui import (
+    render_main_understand,
+    render_comparison_section,
+    render_estimate_section,
+    render_calculation_section,
+    render_suggestions_section,
+)
 from history_input import (
     MAX_PAST_BILLS, bill_to_history_row, parse_manual_rows,
     merge_history_rows, parse_history_table_payload,
@@ -385,7 +393,7 @@ def render_draft_section(curr_bill: Dict[str, Any]) -> None:
                     pipe = extract_bill_pipeline(img)
                     st.session_state["prev_result"] = pipe
                 except Exception as e:
-                    st.error(f"Previous-bill extraction failed: {e}")
+                    render_user_error("గత బిల్లు చదవడం కాలేదు.\nPrevious-bill extraction failed.", tech=str(e)[:200])
                     st.session_state["prev_result"] = None
 
     prev_pipe = st.session_state.get("prev_result")
@@ -457,10 +465,21 @@ def _rebuild_model_with_history(result: Dict[str, Any]) -> Dict[str, Any]:
     return result
 
 
+def render_user_error(msg: str, tech: Optional[str] = None) -> None:
+    """Telugu first, then English; any leftover technical detail as small text."""
+    parts = [p.strip() for p in (msg or "").splitlines() if p.strip()]
+    main = "\n\n".join(parts[:2]) if parts else (msg or "")
+    st.error(main)
+    detail = tech or (" ".join(parts[2:]) if len(parts) > 2 else None)
+    if detail:
+        st.caption(detail)
+
+
 def _missing_key_message() -> None:
-    st.error(
+    render_user_error(
         "NVIDIA_API_KEY లేదు. డెమో మోడ్ (?demo=1) కీ లేకుండా పనిచేస్తుంది. "
-        "అసలు ఫోటో చదవడానికి Streamlit secrets లేదా envలో కీ పెట్టండి."
+        "అసలు ఫోటో చదవడానికి Streamlit secrets లేదా envలో కీ పెట్టండి.\n"
+        "API key is not configured. Demo mode works without a key."
     )
 
 
@@ -555,7 +574,7 @@ def render_history_collectors(result: Dict[str, Any]) -> None:
                     if getattr(e, "kind", None) == "missing_key" or "NVIDIA_API_KEY missing" in str(e):
                         _missing_key_message()
                     else:
-                        st.error(format_nvidia_user_message(e))
+                        render_user_error(format_nvidia_user_message(e))
 
     with tab_manual:
         import pandas as pd
@@ -661,34 +680,32 @@ def _result_from_scenario(key: str, use_sarvam: bool = False) -> Dict[str, Any]:
 
 
 def render_citizen_tab(demo: bool, use_sarvam: bool) -> None:
-    st.markdown("##### ఒక-క్లిక్ సీనారియోలు")
-    st.caption("రూపాయలు tariff.py లెక్కిస్తుంది — హార్డ్‌కోడ్ కాదు. నమూనా డేటా, నిజమైన కన్స్యూమర్ కాదు.")
-    c1, c2, c3 = st.columns(3)
-    for col, key in ((c1, "A"), (c2, "B"), (c3, "C")):
-        sc = get_scenario(key)
-        if col.button(sc["title_te"], key=f"citizen_sc_{key}"):
-            st.session_state["result"] = _result_from_scenario(key, use_sarvam)
-            st.session_state["prev_result"] = None
-            st.rerun()
-
     uploaded = None
     if not demo:
+        st.markdown('<div class="upload-panel">', unsafe_allow_html=True)
         uploaded = st.file_uploader(
-            "బిల్లు ఫోటో అప్‌లోడ్ చేయండి (JPG/PNG)",
+            t("upload_label"),
             type=["jpg", "jpeg", "png"],
+            key="bill_upload",
         )
+        st.caption(t("upload_hint"))
+        clicked = st.button(
+            t("upload_button"),
+            type="primary",
+            disabled=uploaded is None,
+            width='stretch',
+        )
+        st.markdown("</div>", unsafe_allow_html=True)
         if uploaded is not None:
-            with st.expander("Bill photo (PII hidden by default / ఫోటోలో వ్యక్తిగత వివరాలు ఉన్నాయి)", expanded=False):
-                st.caption("Preview hidden to protect names, phones and addresses on the bill.")
+            with st.expander("ఫోటో ప్రివ్యూ దాచబడింది / preview hidden (PII)", expanded=False):
+                st.caption("పేరు, ఫోన్, చిరునామా స్క్రీన్‌పై చూపించం.")
                 st.write(f"File: {uploaded.name}")
-
-        clicked = st.button("🔍 బిల్లు వివరించండి", type="primary", disabled=uploaded is None)
         if clicked:
             if uploaded is None:
                 st.warning("దయచేసి ముందు బిల్లు ఫోటో అప్‌లోడ్ చేయండి.")
                 return
             img = Image.open(uploaded)
-            with st.spinner("NVIDIA Vision తో చదువుతున్నాం..."):
+            with st.spinner("బిల్లు చదువుతున్నాం..."):
                 if not nvidia_key_configured():
                     _missing_key_message()
                     return
@@ -698,7 +715,7 @@ def render_citizen_tab(demo: bool, use_sarvam: bool) -> None:
                     if getattr(e, "kind", None) == "missing_key" or "NVIDIA_API_KEY missing" in str(e):
                         _missing_key_message()
                     else:
-                        st.error(format_nvidia_user_message(e))
+                        render_user_error(format_nvidia_user_message(e))
                     st.session_state["result"] = None
                     return
             bill = pipe["bill"]
@@ -710,7 +727,10 @@ def render_citizen_tab(demo: bool, use_sarvam: bool) -> None:
                 telugu, src = explain_bill(bill, use_sarvam=bool(use_sarvam))
                 est = estimate_next_bill_from_actual(bill)
                 prev_bill = (st.session_state.get("prev_result") or {}).get("bill")
-                model = build_dashboard_model(bill, prev_bill, pipe.get("checks"), extra_history=st.session_state.get("user_history_rows") or None)
+                model = build_dashboard_model(
+                    bill, prev_bill, pipe.get("checks"),
+                    extra_history=st.session_state.get("user_history_rows") or None,
+                )
             st.session_state["result"] = {
                 "bill": bill,
                 "prev_bill": (st.session_state.get("prev_result") or {}).get("bill"),
@@ -731,10 +751,20 @@ def render_citizen_tab(demo: bool, use_sarvam: bool) -> None:
     else:
         st.caption("డెమో మోడ్ ఆన్ — అసలు బిల్లు ఫోటో అవసరం లేదు, NVIDIA కాల్ లేదు, PII లేదు.")
 
+    with st.expander(t("try_sample"), expanded=False):
+        st.caption("రూపాయలు tariff.py లెక్కిస్తుంది — హార్డ్‌కోడ్ కాదు. నమూనా డేటా, నిజమైన కన్స్యూమర్ కాదు.")
+        c1, c2, c3 = st.columns(3)
+        for col, key in ((c1, "A"), (c2, "B"), (c3, "C")):
+            sc = get_scenario(key)
+            if col.button(sc["title_te"], key=f"citizen_sc_{key}"):
+                st.session_state["result"] = _result_from_scenario(key, use_sarvam)
+                st.session_state["prev_result"] = None
+                st.rerun()
+
     result = st.session_state.get("result")
     if not result:
         if not demo and uploaded is None:
-            st.info("స్పష్టమైన బిల్లు ఫోటో అప్‌లోడ్ చేయండి, ఒక సీనారియో నొక్కండి, లేదా సైడ్‌బార్‌లో డెమో మోడ్ ఆన్ చేయండి.")
+            st.info("స్పష్టమైన బిల్లు ఫోటో అప్‌లోడ్ చేయండి, ఒక నమూనా నొక్కండి, లేదా సైడ్‌బార్‌లో డెమో మోడ్ ఆన్ చేయండి.")
         return
 
     if result.get("scenario"):
@@ -742,25 +772,9 @@ def render_citizen_tab(demo: bool, use_sarvam: bool) -> None:
         st.caption(f"సీనారియో: {result.get('display_name')}")
     elif result.get("demo"):
         st.caption(f"డెమో: {result.get('display_name') or 'లక్ష్మి (డెమో)'} — USC / చిరునామా / ఫోన్ లేవు.")
-    elif result.get("from_cache"):
-        st.caption("ఈ ఫోటో ఫలితం హాష్ కాష్ నుండి వచ్చింది (మళ్లీ NVIDIA కాల్ లేదు).")
-    elif result.get("kept_attempt"):
-        kept_model = result.get("kept_model") or NIM_MODEL
-        st.caption(
-            f"NVIDIA attempt kept: {result.get('kept_attempt')} of {result.get('attempts_used')} "
-            f"(model={kept_model}, temperature=0, top_p=0.1, timeout={NIM_TIMEOUT}s)."
-        )
-
-    if result.get("corrections"):
-        st.info(
-            "auto-correct chesam:\n\n- " + "\n- ".join(result["corrections"]),
-            icon="🔧",
-        )
 
     if result.get("guard"):
-        st.error(result["guard"])
-        with st.expander("Extracted JSON"):
-            st.json(result["bill"])
+        render_user_error(str(result["guard"]))
         return
 
     model = result.get("model")
@@ -768,90 +782,69 @@ def render_citizen_tab(demo: bool, use_sarvam: bool) -> None:
         model = build_dashboard_model(result["bill"], result.get("prev_bill"), result.get("checks"))
         result["model"] = model
 
-    render_dashboard(model)
-
-    telugu = result.get("telugu") or ""
-    if telugu:
-        render_voice_note(telugu)
-
-    if result.get("demo"):
-        st.caption("డెమో / సీనారియో మోడ్‌లో చార్ట్ మూలం 'Demo data' కావచ్చు. అసలు బిల్లులు జోడించాలంటే డెమో ఆఫ్ చేసి ఫోటో అప్‌లోడ్ చేయండి.")
-    else:
-        render_history_collectors(result)
-
-    # Optional previous bill (non-demo, non-scenario) — rebuild jump after compare
-    if not result.get("demo"):
-        st.markdown("##### గత నెల బిల్లు ఫోటో (ఐచ్ఛికం)")
-        prev_up = st.file_uploader(
-            "పోలిక కోసం గత బిల్లు ఫోటో",
-            type=["jpg", "jpeg", "png"],
-            key="prev_bill_upload",
-        )
-        if prev_up is not None:
-            with st.expander("Previous bill photo (PII hidden by default)", expanded=False):
-                st.caption("Preview hidden to protect names, phones and addresses on the bill.")
-                st.write(f"File: {prev_up.name}")
-        prev_clicked = st.button(
-            "గత బిల్లుతో పోల్చండి",
-            disabled=prev_up is None,
-            key="compare_prev_bill",
-        )
-        if prev_clicked and prev_up is not None:
-            img = Image.open(prev_up)
-            with st.spinner("NVIDIA Vision తో గత బిల్లు చదువుతున్నాం..."):
-                try:
-                    pipe = extract_bill_pipeline_cached(img, use_cache=True)
-                    st.session_state["prev_result"] = pipe
-                    result["prev_bill"] = pipe.get("bill")
-                    result["model"] = build_dashboard_model(result["bill"], pipe.get("bill"), result.get("checks"))
-                    st.session_state["result"] = result
-                    st.rerun()
-                except Exception as e:
-                    if getattr(e, "kind", None) == "missing_key" or "NVIDIA_API_KEY missing" in str(e):
-                        _missing_key_message()
-                    else:
-                        st.error(format_nvidia_user_message(e))
-
-    # Existing Telugu + rough anchana kept, collapsed so the dashboard leads.
-    if st.checkbox("పాత టెంప్లేట్ తెలుగు వివరణ / rough anchana చూపించు", key="show_old_template"):
-        st.caption(f"source: {result.get('src')}")
+    tab_u, tab_c, tab_e, tab_h, tab_s = st.tabs([
+        t("nav_understand"),
+        t("nav_compare"),
+        t("nav_estimate"),
+        t("nav_calculated"),
+        t("nav_suggestions"),
+    ])
+    with tab_u:
+        render_main_understand(model, corrections=result.get("corrections"))
         st.markdown(
-            f'<div data-testid="telugu-explanation" style="background:#f0fdfa;border:1px solid #99f6e4;border-radius:12px;'
-            f'padding:1.1rem 1.3rem;line-height:1.8;font-size:1.05rem">{telugu.replace(chr(10), "<br>")}</div>',
+            '<div class="privacy" data-testid="privacy-note">'
+            "గోప్యత: బిల్లు ఫోటోను మేము సేవ్ చేయం, USC/పేరు స్క్రీన్‌పై దాచబడతాయి. "
+            "చదవడానికి ఫోటో NVIDIA Visionకి వెళ్తుంది.</div>",
             unsafe_allow_html=True,
         )
-        est = result.get("est")
-        if est:
-            c1, c2, c3 = st.columns(3)
-            c1.metric("అంచనా యూనిట్లు (30 రోజులు)", est["est_units_30d"])
-            c2.metric("అంచనా ఎనర్జీ", f"₹{est['est_energy']:,.2f}")
-            c3.metric("అంచనా మొత్తం (rough)", f"₹{est['est_total_rough']:,.2f}")
-            st.caption(est["note"])
+    with tab_c:
+        render_comparison_section(model)
+        if not result.get("demo"):
+            render_history_collectors(result)
+            st.markdown("##### గత నెల బిల్లు ఫోటో (ఐచ్ఛికం)")
+            prev_up = st.file_uploader(
+                "పోలిక కోసం గత బిల్లు ఫోటో",
+                type=["jpg", "jpeg", "png"],
+                key="prev_bill_upload",
+            )
+            if prev_up is not None:
+                with st.expander("Previous bill photo (PII hidden by default)", expanded=False):
+                    st.caption("Preview hidden to protect names, phones and addresses on the bill.")
+                    st.write(f"File: {prev_up.name}")
+            prev_clicked = st.button(
+                "గత బిల్లుతో పోల్చండి",
+                disabled=prev_up is None,
+                key="compare_prev_bill",
+            )
+            if prev_clicked and prev_up is not None:
+                img = Image.open(prev_up)
+                with st.spinner("గత బిల్లు చదువుతున్నాం..."):
+                    try:
+                        pipe = extract_bill_pipeline_cached(img, use_cache=True)
+                        st.session_state["prev_result"] = pipe
+                        result["prev_bill"] = pipe.get("bill")
+                        result["model"] = build_dashboard_model(
+                            result["bill"], pipe.get("bill"), result.get("checks")
+                        )
+                        st.session_state["result"] = result
+                        st.rerun()
+                    except Exception as e:
+                        if getattr(e, "kind", None) == "missing_key" or "NVIDIA_API_KEY missing" in str(e):
+                            _missing_key_message()
+                        else:
+                            render_user_error(format_nvidia_user_message(e))
+    with tab_e:
+        render_estimate_section(model)
+    with tab_h:
+        render_calculation_section(
+            model,
+            corrections=result.get("corrections"),
+            result=result,
+            telugu=result.get("telugu") or "",
+        )
+    with tab_s:
+        render_suggestions_section(model)
 
-    st.subheader("Extracted fields")
-    bill = result["bill"]
-    display_keys = [
-        "discom", "category", "contracted_load_kw", "phase", "bill_date",
-        "prev_reading", "present_reading", "prev_reading_date", "present_reading_date",
-        "units", "days", "days_source",
-        "energy_charges", "fixed_charges", "customer_charges", "electricity_duty",
-        "interest_on_ed", "surcharge", "trueup_charges", "trueup_units",
-        "fsa_fca", "subsidy", "adjustment", "loss_gain", "acd_due", "acd_surcharge",
-        "average_month_units",
-        "bill_amount", "bill_amount_printed", "total_due", "due_date",
-    ]
-    rows = []
-    for k in display_keys:
-        if k in bill and bill[k] is not None:
-            rows.append({"Field": k, "Value": "" if bill[k] is None else str(bill[k])})
-    if rows:
-        st.table(rows)
-    with st.expander("Raw JSON (USC / consumer number redacted)"):
-        redacted = dict(bill)
-        if redacted.get("usc_no"):
-            redacted["usc_no"] = "••••••••"
-        redacted.pop("unit_history", None)
-        st.json(redacted)
 
 
 def main() -> None:
@@ -868,38 +861,49 @@ def main() -> None:
     except Exception:
         demo_q = False
 
-    with st.sidebar:
-        st.header("సెట్టింగ్స్")
-        demo = st.checkbox(
-            "డెమో మోడ్ (లక్ష్మి, PII లేదు)",
-            value=demo_q,
-            help="Ground-truth Lakshmi bills + synthetic 13-month history. No NVIDIA call.",
-            key="demo_mode",
-        )
-        use_sarvam = st.checkbox(
-            "Use Sarvam for Telugu (optional, paid)",
-            value=False,
-            help="Falls back to template on error. Leave OFF unless Jay re-approves.",
-            key="use_sarvam",
-        )
-        if not demo:
-            st.caption("AI key: configured yes" if nvidia_key_configured() else "AI key: configured no")
-        st.caption(
-            f"Vision: `{NIM_MODEL}` · fallback `{NIM_FALLBACK_MODEL}` · "
-            f"timeout {NIM_TIMEOUT}s · hash cache on"
-        )
-
-    st.markdown(f"<style>{CSS}</style>", unsafe_allow_html=True)
-    st.markdown(
-        '<div class="tisc-hero"><h1>⚡ మీ విద్యుత్ బిల్లు సహాయకుడు</h1>'
-        "<p>TGSPDCL బిల్లు ఫోటో → చార్జీల వివరణ, ఎందుకు పెరిగింది, వచ్చే నెల అంచనా</p></div>",
-        unsafe_allow_html=True,
-    )
-
     if "result" not in st.session_state:
         st.session_state["result"] = None
     if "prev_result" not in st.session_state:
         st.session_state["prev_result"] = None
+
+    with st.sidebar:
+        st.header(t("settings"))
+        demo = st.checkbox(
+            t("demo_mode"),
+            value=demo_q,
+            help="Ground-truth Lakshmi bills + synthetic 13-month history. No NVIDIA call.",
+            key="demo_mode",
+        )
+        use_sarvam = False
+        with st.expander(t("technical"), expanded=False):
+            use_sarvam = st.checkbox(
+                "Use Sarvam for Telugu (optional, paid — leave OFF)",
+                value=False,
+                help="Falls back to template on error. Leave OFF unless Jay re-approves.",
+                key="use_sarvam",
+            )
+            if not demo:
+                st.caption("AI key: configured yes" if nvidia_key_configured() else "AI key: configured no")
+            st.caption(
+                f"Vision: `{NIM_MODEL}` · fallback `{NIM_FALLBACK_MODEL}` · "
+                f"timeout {NIM_TIMEOUT}s · hash cache on"
+            )
+            result_side = st.session_state.get("result") or {}
+            if result_side.get("from_cache"):
+                st.caption("ఈ ఫోటో ఫలితం హాష్ కాష్ నుండి వచ్చింది (మళ్లీ NVIDIA కాల్ లేదు).")
+            elif result_side.get("kept_attempt") and not result_side.get("demo"):
+                kept_model = result_side.get("kept_model") or NIM_MODEL
+                st.caption(
+                    f"NVIDIA attempt kept: {result_side.get('kept_attempt')} of "
+                    f"{result_side.get('attempts_used')} (model={kept_model})."
+                )
+
+    st.markdown(f"<style>{CSS}</style>", unsafe_allow_html=True)
+    st.markdown(
+        f'<div class="tisc-hero"><h1>⚡ {t("app_title")}</h1>'
+        f"<p>{t('app_tagline')}</p></div>",
+        unsafe_allow_html=True,
+    )
 
     result = st.session_state.get("result")
     # Leaving demo clears the Lakshmi demo only; one-click scenarios stay.
@@ -911,7 +915,7 @@ def main() -> None:
         st.session_state["prev_result"] = None
 
     tab_citizen, tab_wa, tab_discom = st.tabs(
-        ["పౌరుడు / Citizen", "WhatsApp", "DISCOM dashboard"]
+        [t("tab_citizen"), t("tab_whatsapp"), t("tab_discom")]
     )
     with tab_citizen:
         render_citizen_tab(demo, use_sarvam)

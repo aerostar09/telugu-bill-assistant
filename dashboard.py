@@ -32,9 +32,10 @@ from tariff import (
 )
 from history_input import merge_history_rows, history_display_meta, GRUHA_JYOTHI_NOTE_TE
 from late_reading import late_reading_effect, resolve_billing_days
-from forecast import forecast_bill, backtest, history_from_bill
+from forecast import forecast_bill, backtest, history_from_bill, forecast_display_range
 from draft_features import trueup_explainer, jump_card_text, cliff_card_text
 from self_checks import run_all_checks, check_jump_sum
+from terms import t, rupees_display, TARIFF_VERSION
 
 FEEDBACK_PATH = Path(__file__).resolve().parent / "data" / "feedback.json"
 WA_MAX_CHARS = 700
@@ -87,6 +88,23 @@ div[data-testid="stDecoration"] {display: none !important;}
 .badge-yellow { background: #fef0c7; color: #93370d; }
 .badge-red { background: #fecdca; color: #912018; }
 .badge-muted { background: #eef2f1; color: #4b635f; }
+.bill-hero { background: linear-gradient(180deg, #f0fdfa 0%, #ffffff 100%); border: 1px solid #c5ebe3; border-radius: 18px; padding: 1.15rem 1.2rem 1.25rem; text-align: center; margin: 0 0 1rem 0; }
+.bill-hero-label { font-size: 0.95rem; color: #4b635f; font-weight: 600; }
+.bill-hero-amt { font-size: 2.55rem; font-weight: 800; color: #0f3d38; line-height: 1.15; margin: .15rem 0 .35rem; }
+.bill-hero-meta { display: flex; flex-wrap: wrap; gap: .45rem .8rem; justify-content: center; align-items: center; color: #4b635f; font-size: 0.95rem; }
+.reason-card { background:#fff; border:1px solid #e5eeec; border-radius:14px; padding:.4rem 1rem .55rem; margin: 0 0 1rem 0; }
+.reason-row { display:flex; justify-content:space-between; align-items:center; padding:.55rem 0; border-bottom:1px solid #eef2f1; gap: .75rem; }
+.reason-row:last-child { border-bottom:0; }
+.reason-row .why { font-weight: 600; color:#10221f; }
+.reason-row .amt { font-weight: 700; white-space: nowrap; }
+.upload-panel { background:#fff; border:2px dashed #9fd4c8; border-radius:16px; padding:1rem 1rem .6rem; margin: 0 0 1rem 0; }
+.verdict-sm { font-size: 1rem; padding: .65rem 1rem; }
+@media (max-width: 480px) {
+  .bill-hero-amt { font-size: 2.15rem; }
+  .tisc-hero h1 { font-size: 1.4rem; }
+  .block-container { padding-left: 0.8rem; padding-right: 0.8rem; }
+}
+
 
 .jump-row { display: flex; justify-content: space-between; align-items: center; padding: .55rem 0; border-bottom: 1px solid #eef2f1; }
 .jump-row:last-child { border-bottom: 0; font-weight: 700; }

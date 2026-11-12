@@ -29,6 +29,8 @@ prior month). MAE in units and rupees, and % of actuals inside [low, high].
 """
 from __future__ import annotations
 
+import math
+
 from dataclasses import dataclass
 from datetime import date
 from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
@@ -493,3 +495,50 @@ def backtest(
         "by_method": {m: _summ(rs) for m, rs in by_method.items()},
         "rows": rows,
     }
+
+
+def round_rupee_range(low: Any, high: Any, step: int = 100) -> Optional[Dict[str, Any]]:
+    """Round a rupee interval to a clean band (default ₹100), never paise.
+
+    Example: 520.32–791.99 → ₹500–₹800. If the band would collapse, expand
+    by one step so the range is still a range.
+    """
+    if low is None or high is None:
+        return None
+    try:
+        lo = float(low)
+        hi = float(high)
+    except (TypeError, ValueError):
+        return None
+    if lo > hi:
+        lo, hi = hi, lo
+    step = int(step) if step else 100
+    rlo = int(math.floor(lo / step) * step)
+    rhi = int(math.ceil(hi / step) * step)
+    if rhi <= rlo:
+        rhi = rlo + step
+    return {"low": rlo, "high": rhi, "step": step}
+
+
+def forecast_display_range(fc: Optional[Dict[str, Any]], step: int = 100) -> Optional[Dict[str, Any]]:
+    """Public display range + basis sentence. Precise quotes stay on fc['quotes']."""
+    if not fc or not fc.get("quotes"):
+        return None
+    quotes = fc["quotes"]
+    lo = (quotes.get("low") or {}).get("total")
+    hi = (quotes.get("high") or {}).get("total")
+    rng = round_rupee_range(lo, hi, step=step)
+    if not rng:
+        return None
+    likely = (quotes.get("likely") or {}).get("total")
+    src = "నమూనా డేటా" if fc.get("history_is_demo") else "మీ గత బిల్లులు"
+    rng["low_exact"] = lo
+    rng["high_exact"] = hi
+    rng["likely_exact"] = likely
+    rng["basis"] = (
+        f"ఈ అంచనా {src} ఆధారంగా, టారిఫ్ FY 2026-27 TGERC. "
+        f"సుమారు ₹{rng['low']}–₹{rng['high']} "
+        f"(పైసల వరకు కాదు). సమయానికి చెల్లిస్తే ఆలస్య రుసుము లేదు."
+    )
+    return rng
+

@@ -212,7 +212,11 @@ def format_nvidia_user_message(exc: BaseException) -> str:
             f"NVIDIA సర్వర్ లోపం (HTTP {status}). దయచేసి మళ్లీ ప్రయత్నించండి.\n"
             f"NVIDIA request failed (HTTP {status})."
         )
-    return f"Extraction failed: {exc}"
+    # Do not echo raw exception text in the main banner (may contain paths).
+    return (
+        "బిల్లు చదవడం కాలేదు. దయచేసి మళ్లీ ప్రయత్నించండి.\n"
+        "We could not read the bill. Please try again."
+    )
 
 
 def jpeg_payload_info(image_bytes: bytes) -> Dict[str, int]:

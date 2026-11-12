@@ -12,6 +12,8 @@ from forecast import (
     normalize_history,
     SEASONAL_WEIGHT,
     TREND_WEIGHT,
+    round_rupee_range,
+    forecast_display_range,
 )
 
 
@@ -93,6 +95,33 @@ class TestLakshmiDemoForecast(unittest.TestCase):
         for row in bt["rows"]:
             self.assertLessEqual(row["low"], row["likely"])
             self.assertLessEqual(row["likely"], row["high"])
+
+
+
+class TestRoundedRange(unittest.TestCase):
+    def test_paise_are_dropped_to_hundreds(self):
+        rng = round_rupee_range(520.32, 791.99)
+        self.assertEqual(rng["low"], 500)
+        self.assertEqual(rng["high"], 800)
+
+    def test_collapsed_band_expands(self):
+        rng = round_rupee_range(757, 757)
+        self.assertEqual(rng["low"], 700)
+        self.assertEqual(rng["high"], 800)
+
+    def test_lakshmi_demo_display_range(self):
+        bill = lakshmi_demo_bundle()["bill"]
+        fb = forecast_bill(bill)
+        # precise quotes stay at paise (existing tests)
+        self.assertEqual(fb["quotes"]["likely"]["total"], 655.91)
+        disp = forecast_display_range(fb)
+        self.assertEqual(disp["low"], 500)
+        self.assertEqual(disp["high"], 800)
+        self.assertNotIn("655.91", disp["basis"])
+        self.assertIn("₹500", disp["basis"])
+        self.assertIn("₹800", disp["basis"])
+        self.assertIn("FY 2026-27 TGERC", disp["basis"])
+        self.assertIn("నమూనా డేటా", disp["basis"])
 
 
 if __name__ == "__main__":
