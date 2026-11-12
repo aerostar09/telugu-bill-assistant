@@ -4,3 +4,5 @@ requests==2.34.2
 altair==6.3.0
 pandas==3.1.1
 numpy==2.5.4
+gtts==2.5.4
+plotly==6.5.2

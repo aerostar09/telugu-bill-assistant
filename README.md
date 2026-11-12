@@ -18,6 +18,10 @@ Upload a bill photo → structured extract → Telugu explanation of every charg
 
 **Demo (no API key):** open the app with `?demo=1` or turn on **డెమో మోడ్** in the sidebar. Uses PII-free Lakshmi ground-truth numbers plus clearly labelled synthetic history.
 
+Three top-level tabs: **పౌరుడు / Citizen** (upload or one-click scenarios A/B/C, rupees from `tariff.py`), a **WhatsApp simulator** of a proposed integration with the official TGSPDCL chatbot 87124 41912 (this is a simulation, not the official bot), and a **DISCOM dashboard** (real counts from an anonymised public set, n=71, plus clearly labelled sample map / anomaly table / queries-avoided concept).
+
+Photo extract uses NVIDIA NIM vision (`meta/llama-3.2-90b-vision-instruct`, first attempt timeout 60s, image downscaled to max 1600px JPEG quality 85). On timeout it falls back to `google/gemma-4-31b-it` (same key). Auth failures (HTTP 401/403) show an API-key problem message (Telugu + English); other HTTP errors show the status code; timeouts keep the slow-server message. Streamlit logs record status and elapsed time — never the key. In non-demo mode the sidebar shows `AI key: configured yes/no` (never the value).
+
 ## Local run
 
 ```bash
@@ -67,5 +71,5 @@ Energy slabs, fixed charge (₹10/kW, **₹50/kW above 800 units**), customer ch
 ## Tests
 
 ```bash
-python -m unittest test_tariff test_forecast test_late_reading test_dashboard_copy test_history_input -q
+python -m unittest discover -s . -p 'test_*.py' -q
 ```

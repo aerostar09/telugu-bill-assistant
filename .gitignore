@@ -7,6 +7,7 @@ secrets.yaml
 
 # Local caches and runtime
 .extract_cache/
+.voice_cache/
 data/feedback.json
 __pycache__/
 *.pyc

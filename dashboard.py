@@ -42,8 +42,25 @@ WA_MAX_CHARS = 700
 CSS = """
 @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+Telugu:wght@400;500;600;700&family=Noto+Sans:wght@400;500;600;700&display=swap');
 
-html, body, [data-testid="stAppViewContainer"], .stApp, .stMarkdown, p, h1, h2, h3, h4, h5, label, div, span {
+/* Noto for typography only. Do NOT force it on div/span — that overrides
+   Material icon fonts and renders ligatures as literal text (e.g. _arrow_right). */
+html, body, [data-testid="stAppViewContainer"], .stApp, .stMarkdown, p, h1, h2, h3, h4, h5, label {
   font-family: "Noto Sans Telugu", "Noto Sans", sans-serif !important;
+}
+span[data-testid="stIconMaterial"],
+span[data-testid="stExpanderToggleIcon"],
+i.material-icons,
+.material-icons,
+.material-symbols-rounded,
+.material-symbols-outlined,
+[data-testid="stIconMaterial"],
+[class*="material-symbols"],
+[class*="material-icons"] {
+  font-family: "Material Symbols Rounded", "Material Symbols Outlined", "Material Icons", sans-serif !important;
+  font-style: normal;
+  font-weight: 400;
+  letter-spacing: normal;
+  text-transform: none;
 }
 .block-container { max-width: 1120px; padding-top: 1.2rem; padding-bottom: 3rem; }
 #MainMenu {visibility: hidden;}

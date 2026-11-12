@@ -21,7 +21,13 @@ from post_ocr import apply_post_ocr_corrections
 # Reuse prompt + parse helpers from the app/harness style
 NIM_URL = "https://integrate.api.nvidia.com/v1/chat/completions"
 NIM_MODEL = "meta/llama-3.2-90b-vision-instruct"
-NIM_TIMEOUT = 45
+NIM_TIMEOUT = 60  # first attempt
+NIM_FALLBACK_TIMEOUT = 45
+# meta/llama-3.2-11b-vision-instruct returned HTTP 410 on this key (2026-11-12, 0.04s).
+# google/gemma-4-31b-it is a current NVIDIA-hosted multimodal model (text+image, free endpoint
+# still listed Available). Not live-probed: the 1-call budget was used on 11b.
+NIM_FALLBACK_MODEL = "google/gemma-4-31b-it"
+JPEG_QUALITY = 85
 MAX_SIDE = 1600
 TEMPERATURE = 0
 TOP_P = 0.1
@@ -135,17 +141,113 @@ def downscale_jpeg_image(img: Image.Image, max_side: int = MAX_SIDE) -> bytes:
     if scale < 1.0:
         img = img.resize((int(w * scale), int(h * scale)), Image.Resampling.LANCZOS)
     buf = io.BytesIO()
-    img.save(buf, format="JPEG", quality=85, optimize=True)
-    return buf.getvalue()
+    img.save(buf, format="JPEG", quality=JPEG_QUALITY, optimize=True)
+    data = buf.getvalue()
+    return data
 
 
-def call_nvidia_once(image_bytes: bytes, mime: str = "image/jpeg", prompt: Optional[str] = None) -> Tuple[Dict[str, Any], float, str]:
+
+class NvidiaCallError(RuntimeError):
+    """Structured NVIDIA failure. Never includes the API key."""
+
+    def __init__(
+        self,
+        kind: str,
+        message: str,
+        status: Optional[int] = None,
+        elapsed_s: Optional[float] = None,
+        model: Optional[str] = None,
+        jpeg_bytes: Optional[int] = None,
+    ):
+        super().__init__(message)
+        self.kind = kind  # auth | timeout | http | missing_key | other
+        self.status = status
+        self.elapsed_s = elapsed_s
+        self.model = model
+        self.jpeg_bytes = jpeg_bytes
+
+    def user_message(self) -> str:
+        return format_nvidia_user_message(self)
+
+
+def format_nvidia_user_message(exc: BaseException) -> str:
+    kind = getattr(exc, "kind", None)
+    status = getattr(exc, "status", None)
+    if kind is None:
+        low = str(exc).lower()
+        if "nvidia_api_key missing" in low or "api_key missing" in low:
+            kind = "missing_key"
+        elif "timeout" in low or "timed out" in low:
+            kind = "timeout"
+        elif "401" in low or "403" in low:
+            kind = "auth"
+            if status is None:
+                if "401" in low:
+                    status = 401
+                elif "403" in low:
+                    status = 403
+        elif "http " in low:
+            kind = "http"
+    if kind == "missing_key":
+        return (
+            "NVIDIA_API_KEY లేదు. డెమో మోడ్ (?demo=1) కీ లేకుండా పనిచేస్తుంది. "
+            "అసలు ఫోటో చదవడానికి Streamlit secrets లేదా envలో కీ పెట్టండి.\n"
+            "API key is not configured. Demo mode works without a key."
+        )
+    if kind == "auth":
+        return (
+            "API కీ సమస్య. Streamlit secrets / envలో NVIDIA_API_KEYని సరిచూడండి "
+            f"(HTTP {status or '401/403'}).\n"
+            f"API key problem (HTTP {status or '401/403'}). Check the key in Streamlit secrets — it may be missing, pasted wrong, or unauthorized."
+        )
+    if kind == "timeout":
+        return "సర్వర్ నెమ్మదిగా ఉంది. దయచేసి కొద్ది సేపు తర్వాత మళ్లీ ప్రయత్నించండి.\nThe vision server timed out. Please try again in a moment."
+    if kind == "http":
+        return (
+            f"NVIDIA సర్వర్ లోపం (HTTP {status}). దయచేసి మళ్లీ ప్రయత్నించండి.\n"
+            f"NVIDIA request failed (HTTP {status})."
+        )
+    return f"Extraction failed: {exc}"
+
+
+def jpeg_payload_info(image_bytes: bytes) -> Dict[str, int]:
+    b64_len = (len(image_bytes) + 2) // 3 * 4
+    return {
+        "jpeg_bytes": len(image_bytes),
+        "b64_bytes": b64_len,
+        "approx_data_url_bytes": b64_len + 32,
+    }
+
+
+def _log_nvidia(event: str, **fields: Any) -> None:
+    """Streamlit/Cloud logs. Never includes the API key or response bodies."""
+    parts = [f"NVIDIA {event}"]
+    for k, v in fields.items():
+        if v is None:
+            continue
+        lk = str(k).lower()
+        if "key" in lk or "token" in lk or "secret" in lk or "authorization" in lk:
+            continue
+        parts.append("%s=%s" % (k, v))
+    print(" ".join(parts), flush=True)
+
+
+def call_nvidia_once(
+    image_bytes: bytes,
+    mime: str = "image/jpeg",
+    prompt: Optional[str] = None,
+    model: Optional[str] = None,
+    timeout: Optional[float] = None,
+) -> Tuple[Dict[str, Any], float, str]:
     key = get_nvidia_api_key()
     if not key:
-        raise RuntimeError("NVIDIA_API_KEY missing")
+        raise NvidiaCallError("missing_key", "NVIDIA_API_KEY missing")
+    use_model = model or NIM_MODEL
+    use_timeout = NIM_TIMEOUT if timeout is None else timeout
+    info = jpeg_payload_info(image_bytes)
     data_url = "data:%s;base64,%s" % (mime, base64.b64encode(image_bytes).decode("ascii"))
     payload = {
-        "model": NIM_MODEL,
+        "model": use_model,
         "temperature": TEMPERATURE,
         "top_p": TOP_P,
         "max_tokens": 3000,
@@ -165,17 +267,44 @@ def call_nvidia_once(image_bytes: bytes, mime: str = "image/jpeg", prompt: Optio
         "Accept": "application/json",
     }
     t0 = time.time()
-    resp = requests.post(NIM_URL, headers=headers, json=payload, timeout=NIM_TIMEOUT)
-    latency = round(time.time() - t0, 2)
+    try:
+        resp = requests.post(NIM_URL, headers=headers, json=payload, timeout=use_timeout)
+    except requests.Timeout as e:
+        elapsed = round(time.time() - t0, 2)
+        _log_nvidia("timeout", status="timeout", elapsed_s=elapsed, model=use_model, **info)
+        raise NvidiaCallError(
+            "timeout", "NVIDIA timeout after %.2fs" % elapsed,
+            status=None, elapsed_s=elapsed, model=use_model, jpeg_bytes=info["jpeg_bytes"],
+        ) from e
+    except requests.RequestException as e:
+        elapsed = round(time.time() - t0, 2)
+        _log_nvidia("network_error", status="error", elapsed_s=elapsed, model=use_model, **info)
+        raise NvidiaCallError(
+            "other", "NVIDIA network error after %.2fs" % elapsed,
+            elapsed_s=elapsed, model=use_model, jpeg_bytes=info["jpeg_bytes"],
+        ) from e
+    elapsed = round(time.time() - t0, 2)
+    _log_nvidia("http", status=resp.status_code, elapsed_s=elapsed, model=use_model, **info)
+    if resp.status_code in (401, 403):
+        raise NvidiaCallError(
+            "auth", "NVIDIA HTTP %s" % resp.status_code,
+            status=resp.status_code, elapsed_s=elapsed, model=use_model, jpeg_bytes=info["jpeg_bytes"],
+        )
     if resp.status_code >= 400:
-        raise RuntimeError("HTTP %s: %s" % (resp.status_code, resp.text[:300]))
+        raise NvidiaCallError(
+            "http", "NVIDIA HTTP %s" % resp.status_code,
+            status=resp.status_code, elapsed_s=elapsed, model=use_model, jpeg_bytes=info["jpeg_bytes"],
+        )
     body = resp.json()
     content = (body.get("choices") or [{}])[0].get("message", {}).get("content")
     if content is None:
-        raise RuntimeError("empty model content")
+        raise NvidiaCallError(
+            "other", "empty model content",
+            status=resp.status_code, elapsed_s=elapsed, model=use_model, jpeg_bytes=info["jpeg_bytes"],
+        )
     if isinstance(content, list):
         content = "".join((p.get("text") or "") if isinstance(p, dict) else str(p) for p in content)
-    return _parse_json_loose(content), latency, content
+    return _parse_json_loose(content), elapsed, content
 
 
 def _evaluate(raw: Dict[str, Any]) -> Dict[str, Any]:
@@ -194,45 +323,86 @@ def _evaluate(raw: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def extract_bill_pipeline(img: Image.Image) -> Dict[str, Any]:
-    """Run extract → post-OCR → checks, retry once if checks fail. Max 2 NVIDIA calls."""
+    """Run extract → post-OCR → checks. Max 2 NVIDIA calls.
+
+    Call 1: primary model, 60s timeout, image already downscaled to max 1600px JPEG q85.
+    Call 2: if the first times out (or 5xx), the faster fallback model; if checks fail,
+    a second extract (fallback model to save time).
+    """
     jpeg = downscale_jpeg_image(img)
+    im = Image.open(io.BytesIO(jpeg))
+    info = jpeg_payload_info(jpeg)
+    _log_nvidia(
+        "payload",
+        width=im.size[0],
+        height=im.size[1],
+        max_side=MAX_SIDE,
+        jpeg_quality=JPEG_QUALITY,
+        **info,
+    )
     attempts = []
     last_err = None
-    for n in (1, 2):
+    plan = [
+        (1, NIM_MODEL, NIM_TIMEOUT),
+        (2, NIM_FALLBACK_MODEL, NIM_FALLBACK_TIMEOUT),
+    ]
+    for n, model, timeout in plan:
         t0 = time.time()
         try:
-            raw, latency, _raw_text = call_nvidia_once(jpeg)
+            raw, latency, _raw_text = call_nvidia_once(
+                jpeg, model=model, timeout=timeout
+            )
             ev = _evaluate(raw)
             ev["attempt"] = n
             ev["latency_s"] = latency
             ev["error"] = None
             attempts.append(ev)
-            print(
-                "NVIDIA attempt %s: ok=%s failures=%s fail_keys=%s latency=%ss"
-                % (n, ev["ok"], ev["failure_count"], ev["checks"].get("fail_keys"), latency),
-                flush=True,
+            ev["model"] = model
+            _log_nvidia(
+                "attempt_ok",
+                attempt=n,
+                model=model,
+                ok=ev["ok"],
+                failures=ev["failure_count"],
+                elapsed_s=latency,
             )
             if ev["ok"]:
                 break
         except Exception as e:
-            last_err = str(e)
+            last_err = e
+            kind = getattr(e, "kind", None)
+            elapsed = getattr(e, "elapsed_s", None) or round(time.time() - t0, 2)
             attempts.append({
                 "attempt": n,
                 "ok": False,
                 "failure_count": 10**6,
-                "error": last_err,
-                "latency_s": round(time.time() - t0, 2),
+                "error": str(e),
+                "error_kind": kind,
+                "latency_s": elapsed,
+                "model": model,
                 "bill": None,
                 "corrections": [],
                 "checks": None,
                 "guard": None,
             })
-            print("NVIDIA attempt %s: ERROR: %s" % (n, last_err), flush=True)
+            _log_nvidia(
+                "attempt_error",
+                attempt=n,
+                model=model,
+                kind=kind or "other",
+                status=getattr(e, "status", None),
+                elapsed_s=elapsed,
+            )
+            # Auth/missing key will not be fixed by a second model.
+            if kind in ("auth", "missing_key"):
+                break
         if n < MAX_CALLS:
             time.sleep(1.0)
 
     usable = [a for a in attempts if a.get("bill") is not None]
     if not usable:
+        if isinstance(last_err, Exception):
+            raise last_err
         raise RuntimeError(last_err or "NVIDIA extract failed")
 
     passing = [a for a in usable if a.get("ok")]
@@ -247,11 +417,13 @@ def extract_bill_pipeline(img: Image.Image) -> Dict[str, Any]:
         "checks": kept["checks"],
         "guard": kept.get("guard"),
         "kept_attempt": kept["attempt"],
+        "kept_model": kept.get("model"),
         "attempts_used": len(attempts),
         "attempts": [
             {
                 "attempt": a["attempt"],
                 "ok": a.get("ok"),
+                "model": a.get("model"),
                 "failure_count": a.get("failure_count"),
                 "fail_keys": (a.get("checks") or {}).get("fail_keys") if a.get("checks") else None,
                 "latency_s": a.get("latency_s"),
