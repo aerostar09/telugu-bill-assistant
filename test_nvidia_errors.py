@@ -12,9 +12,18 @@ from nvidia_pipeline import (
     downscale_jpeg_image,
     call_nvidia_once,
     extract_bill_pipeline,
+    extract_bill_pipeline_cached,
+    save_cached_extract,
+    load_cached_extract,
+    _log_nvidia,
+    _MEMORY_CACHE,
+    get_cache_dir,
     MAX_SIDE,
     JPEG_QUALITY,
+    MAX_TOKENS,
+    ENABLE_THINKING,
     NIM_TIMEOUT,
+    NIM_FALLBACK_TIMEOUT,
     NIM_FALLBACK_MODEL,
     NIM_MODEL,
 )
@@ -125,3 +134,95 @@ class FallbackOnTimeoutTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ThinkingAndCacheTests(unittest.TestCase):
+    def test_payload_disables_thinking_and_caps_tokens(self):
+        captured = {}
+
+        class FakeResp:
+            status_code = 200
+            def json(self):
+                return {
+                    "usage": {"prompt_tokens": 10, "completion_tokens": 20, "total_tokens": 30,
+                              "completion_tokens_details": {"reasoning_tokens": 0}},
+                    "choices": [{"finish_reason": "stop", "message": {"content": "{\"units\": 82}"}}],
+                }
+
+        def fake_post(url, headers=None, json=None, timeout=None):
+            captured["json"] = json
+            captured["timeout"] = timeout
+            return FakeResp()
+
+        img_bytes = b"fake-jpeg"
+        with patch("nvidia_pipeline.requests.post", side_effect=fake_post):
+            with patch("nvidia_pipeline.get_nvidia_api_key", return_value="x" * 8):
+                raw, latency, content = call_nvidia_once(img_bytes)
+        self.assertFalse(captured["json"]["chat_template_kwargs"]["enable_thinking"])
+        self.assertFalse(ENABLE_THINKING)
+        self.assertEqual(captured["json"]["max_tokens"], MAX_TOKENS)
+        self.assertEqual(MAX_TOKENS, 1600)
+        self.assertEqual(raw.get("units"), 82)
+        self.assertGreaterEqual(NIM_FALLBACK_TIMEOUT, 60)
+
+    def test_log_includes_token_counts_not_keys(self):
+        import io, contextlib
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            _log_nvidia(
+                "http",
+                status=200,
+                elapsed_s=7.9,
+                prompt_tokens=1529,
+                completion_tokens=430,
+                reasoning_tokens=0,
+                api_key="should-not-appear",
+                NVIDIA_API_KEY="should-not-appear",
+            )
+        out = buf.getvalue()
+        self.assertIn("prompt_tokens=1529", out)
+        self.assertIn("completion_tokens=430", out)
+        self.assertIn("reasoning_tokens=0", out)
+        self.assertNotIn("should-not-appear", out)
+        self.assertNotIn("api_key=", out)
+
+    def test_successful_extract_is_cached_and_replayed(self):
+        import os, tempfile, shutil
+        from nvidia_pipeline import _MEMORY_CACHE as mem
+        img = Image.new("RGB", (200, 200), color=(30, 30, 30))
+        tmp = tempfile.mkdtemp(prefix="tisc-cache-")
+        calls = {"n": 0}
+
+        def fake_once(image_bytes, mime="image/jpeg", prompt=None, model=None, timeout=None):
+            calls["n"] += 1
+            raw = {
+                "discom": "TGSPDCL", "usc_no": None, "category": "1A",
+                "contracted_load_kw": 3, "phase": "1", "bill_date": "04/02/2026",
+                "prev_reading": 100, "present_reading": 182, "units": 82,
+                "days": 30, "energy_charges": 199, "fixed_charges": 30,
+                "customer_charges": 70, "electricity_duty": 4.92, "interest_on_ed": 0,
+                "surcharge": 10, "trueup_charges": 0, "trueup_units": None,
+                "fsa_fca": 0, "subsidy": 0, "adjustment": 0, "loss_gain": 0.08,
+                "bill_amount": 314, "bill_amount_printed": 314, "total_due": 314,
+                "due_date": "18-02-2026",
+            }
+            return raw, 1.1, "{}"
+
+        mem.clear()
+        try:
+            with patch.dict(os.environ, {"TISC_EXTRACT_CACHE": tmp}):
+                with patch("nvidia_pipeline.call_nvidia_once", side_effect=fake_once):
+                    first = extract_bill_pipeline_cached(img, use_cache=True)
+                    second = extract_bill_pipeline_cached(img, use_cache=True)
+            self.assertFalse(first.get("from_cache"))
+            self.assertTrue(second.get("from_cache"))
+            self.assertEqual(first["bill"]["units"], 82)
+            self.assertEqual(second["bill"]["bill_amount"], 314)
+            self.assertEqual(second["bill"]["surcharge"], 10)
+            self.assertEqual(calls["n"], 1)
+            # disk file exists
+            files = [n for n in os.listdir(tmp) if n.endswith(".json")]
+            self.assertEqual(len(files), 1)
+        finally:
+            mem.clear()
+            shutil.rmtree(tmp, ignore_errors=True)

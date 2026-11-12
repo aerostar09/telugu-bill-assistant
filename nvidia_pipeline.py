@@ -20,26 +20,23 @@ from post_ocr import apply_post_ocr_corrections
 
 # Reuse prompt + parse helpers from the app/harness style
 NIM_URL = "https://integrate.api.nvidia.com/v1/chat/completions"
-# Primary + fallback chosen from a 2026-11-12 probe of this key's live catalog
-# (GET /v1/models, then chat-completions on a synthetic non-PII bill image).
-# meta/llama-3.2-90b-vision-instruct is listed as deprecated 15 Nov / unsupported after
-# 16 Nov 2026 — dropped, because Demo Day is 1 Dec.
-# Rejected on this key: llama-3.2-11b-vision (410), gemma-4-31b-it (404),
-# gemma-3-12b/4b-it (404), phi-3-vision (404), vila (404), kimi-k2.6 (404),
-# cosmos-reason2-8b (404). nemotron-3.5-super-vl-120b-a12b timed out at 60s.
-# Primary: nvidia/nemotron-3-nano-omni-30b-a3b-reasoning — 200 in 29.8s, 17/17 digits,
-#   post-OCR/self-checks passed.
-# Fallback: minimaxai/minimax-m3.1-flash — 200 in 30.2s, all key digits correct,
-#   post-OCR/self-checks passed.
+# Primary + fallback chosen from a 2026-11-12 probe of this key's live catalog.
+# Both models think by default. On a real tall thermal slip that burned the
+# 3000-token cap (and the 60s Cloud timeout) on reasoning, leaving empty content.
+# Always send chat_template_kwargs.enable_thinking=false. With thinking off,
+# the primary returned the known 82 / ₹314 / ₹10 DPS fields in ~8s; the fallback
+# finished in ~38s (bill total and DPS correct). 90b is deprecated after 16 Nov.
 NIM_MODEL = "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning"
-NIM_TIMEOUT = 60  # first attempt
-NIM_FALLBACK_TIMEOUT = 60
+NIM_TIMEOUT = 60  # first attempt; thinking-off primary is ~8s
+NIM_FALLBACK_TIMEOUT = 90  # MiniMax thinking-off was ~38s on a real slip
 NIM_FALLBACK_MODEL = "minimaxai/minimax-m3.1-flash"
 JPEG_QUALITY = 85
 MAX_SIDE = 1600
+MAX_TOKENS = 1600  # JSON extract; 3000 was all consumed by reasoning traces
 TEMPERATURE = 0
 TOP_P = 0.1
 MAX_CALLS = 2
+ENABLE_THINKING = False
 
 SCHEMA_BLOCK = """
 Return ONLY a single JSON object (no markdown fences) with exactly these keys.
@@ -227,17 +224,39 @@ def jpeg_payload_info(image_bytes: bytes) -> Dict[str, int]:
     }
 
 
+_LOG_DENY = (
+    "api_key", "apikey", "access_token", "secret", "authorization",
+    "password", "bearer", "nvidia_api_key",
+)
+
+
 def _log_nvidia(event: str, **fields: Any) -> None:
-    """Streamlit/Cloud logs. Never includes the API key or response bodies."""
+    """Streamlit/Cloud logs. Never includes the API key or response bodies.
+
+    Token *counts* (prompt_tokens, completion_tokens, reasoning_tokens) are OK.
+    """
     parts = [f"NVIDIA {event}"]
     for k, v in fields.items():
         if v is None:
             continue
         lk = str(k).lower()
-        if "key" in lk or "token" in lk or "secret" in lk or "authorization" in lk:
+        if lk == "key" or lk.endswith("_key") or any(d in lk for d in _LOG_DENY):
             continue
         parts.append("%s=%s" % (k, v))
     print(" ".join(parts), flush=True)
+
+
+def _usage_counts(usage: Dict[str, Any]) -> Dict[str, Any]:
+    """Numeric token counts only — never raw usage blobs or keys."""
+    out: Dict[str, Any] = {}
+    for k in ("prompt_tokens", "completion_tokens", "total_tokens", "reasoning_tokens"):
+        v = usage.get(k)
+        if isinstance(v, (int, float)):
+            out[k] = int(v)
+    details = usage.get("completion_tokens_details")
+    if isinstance(details, dict) and isinstance(details.get("reasoning_tokens"), (int, float)):
+        out["reasoning_tokens"] = int(details["reasoning_tokens"])
+    return out
 
 
 def call_nvidia_once(
@@ -258,7 +277,10 @@ def call_nvidia_once(
         "model": use_model,
         "temperature": TEMPERATURE,
         "top_p": TOP_P,
-        "max_tokens": 3000,
+        "max_tokens": MAX_TOKENS,
+        # Both current models think by default; disable or they burn the token
+        # budget on a reasoning trace and return empty content (or time out).
+        "chat_template_kwargs": {"enable_thinking": ENABLE_THINKING},
         "messages": [
             {
                 "role": "user",
@@ -292,7 +314,26 @@ def call_nvidia_once(
             elapsed_s=elapsed, model=use_model, jpeg_bytes=info["jpeg_bytes"],
         ) from e
     elapsed = round(time.time() - t0, 2)
-    _log_nvidia("http", status=resp.status_code, elapsed_s=elapsed, model=use_model, **info)
+    usage = {}
+    finish_reason = None
+    if resp.status_code == 200:
+        try:
+            _body_peek = resp.json()
+            usage = _usage_counts(_body_peek.get("usage") or {})
+            finish_reason = ((_body_peek.get("choices") or [{}])[0] or {}).get("finish_reason")
+        except Exception:
+            _body_peek = None
+    else:
+        _body_peek = None
+    _log_nvidia(
+        "http",
+        status=resp.status_code,
+        elapsed_s=elapsed,
+        model=use_model,
+        finish_reason=finish_reason,
+        **usage,
+        **info,
+    )
     if resp.status_code in (401, 403):
         raise NvidiaCallError(
             "auth", "NVIDIA HTTP %s" % resp.status_code,
@@ -303,7 +344,7 @@ def call_nvidia_once(
             "http", "NVIDIA HTTP %s" % resp.status_code,
             status=resp.status_code, elapsed_s=elapsed, model=use_model, jpeg_bytes=info["jpeg_bytes"],
         )
-    body = resp.json()
+    body = _body_peek if _body_peek is not None else resp.json()
     content = (body.get("choices") or [{}])[0].get("message", {}).get("content")
     if content is None:
         raise NvidiaCallError(
@@ -333,7 +374,7 @@ def _evaluate(raw: Dict[str, Any]) -> Dict[str, Any]:
 def extract_bill_pipeline(img: Image.Image) -> Dict[str, Any]:
     """Run extract → post-OCR → checks. Max 2 NVIDIA calls.
 
-    Call 1: primary model, 60s timeout, image already downscaled to max 1600px JPEG q85.
+    Call 1: primary model, thinking off, 60s timeout, image downscaled to max 1600px JPEG q85.
     Call 2: if the first times out (or 5xx), the faster fallback model; if checks fail,
     a second extract (fallback model to save time).
     """
@@ -452,7 +493,34 @@ import hashlib
 import json
 from pathlib import Path as _Path
 
-CACHE_DIR = _Path(__file__).resolve().parent / ".extract_cache"
+def get_cache_dir() -> _Path:
+    """Prefer a writable directory. Streamlit Cloud can reject the app dir; /tmp works."""
+    env = os.environ.get("TISC_EXTRACT_CACHE")
+    candidates = []
+    if env:
+        candidates.append(_Path(env))
+    candidates.extend([
+        _Path(__file__).resolve().parent / ".extract_cache",
+        _Path("/tmp/tisc_extract_cache"),
+    ])
+    for d in candidates:
+        try:
+            d.mkdir(parents=True, exist_ok=True)
+            probe = d / ".write_probe"
+            probe.write_text("ok")
+            probe.unlink()
+            return d
+        except Exception:
+            continue
+    return candidates[-1]
+
+
+# Back-compat alias (tests / callers may read the name). Resolved lazily.
+def _cache_dir() -> _Path:
+    return get_cache_dir()
+
+
+_MEMORY_CACHE: Dict[str, Any] = {}
 
 
 def _cache_key(image_bytes: bytes) -> str:
@@ -460,25 +528,39 @@ def _cache_key(image_bytes: bytes) -> str:
 
 
 def load_cached_extract(image_bytes: bytes):
-    path = CACHE_DIR / (_cache_key(image_bytes) + ".json")
+    digest = _cache_key(image_bytes)
+    hit = _MEMORY_CACHE.get(digest)
+    if hit:
+        return dict(hit)
+    path = get_cache_dir() / (digest + ".json")
     if not path.is_file():
         return None
     try:
-        return json.loads(path.read_text())
+        data = json.loads(path.read_text())
+        _MEMORY_CACHE[digest] = data
+        return dict(data)
     except Exception:
         return None
 
 
-def save_cached_extract(image_bytes: bytes, result: Dict[str, Any]) -> None:
+def save_cached_extract(image_bytes: bytes, result: Dict[str, Any]) -> bool:
+    """Store a successful extract (no raw image bytes). Returns whether disk write worked."""
+    if not result or not result.get("bill"):
+        return False
+    slim = dict(result)
+    slim.pop("extracted_raw", None)
+    digest = _cache_key(image_bytes)
+    _MEMORY_CACHE[digest] = slim
     try:
-        CACHE_DIR.mkdir(parents=True, exist_ok=True)
-        # Do not persist raw image bytes. Drop bulky raw text if huge.
-        slim = dict(result)
-        slim.pop("extracted_raw", None)
-        path = CACHE_DIR / (_cache_key(image_bytes) + ".json")
+        d = get_cache_dir()
+        d.mkdir(parents=True, exist_ok=True)
+        path = d / (digest + ".json")
         path.write_text(json.dumps(slim, ensure_ascii=False, default=str))
+        _log_nvidia("cache_write", ok=True, sha16=digest[:16])
+        return True
     except Exception:
-        pass
+        _log_nvidia("cache_write", ok=False, sha16=digest[:16])
+        return False
 
 
 def extract_bill_pipeline_cached(img: Image.Image, use_cache: bool = True) -> Dict[str, Any]:
@@ -487,10 +569,11 @@ def extract_bill_pipeline_cached(img: Image.Image, use_cache: bool = True) -> Di
         hit = load_cached_extract(jpeg)
         if hit:
             hit["from_cache"] = True
+            _log_nvidia("cache_hit", sha16=_cache_key(jpeg)[:16])
             return hit
     result = extract_bill_pipeline(img)
     result["from_cache"] = False
-    if use_cache:
+    if use_cache and result.get("bill"):
         save_cached_extract(jpeg, result)
     return result
 
@@ -503,7 +586,7 @@ def extract_history_table_pipeline(img: Image.Image, use_cache: bool = True) -> 
     jpeg = downscale_jpeg_image(img)
     cache_name = "hist_" + _cache_key(jpeg)
     if use_cache:
-        path = CACHE_DIR / (cache_name + ".json")
+        path = get_cache_dir() / (cache_name + ".json")
         if path.is_file():
             try:
                 hit = json.loads(path.read_text())
@@ -521,9 +604,10 @@ def extract_history_table_pipeline(img: Image.Image, use_cache: bool = True) -> 
     }
     if use_cache:
         try:
-            CACHE_DIR.mkdir(parents=True, exist_ok=True)
+            d = get_cache_dir()
+            d.mkdir(parents=True, exist_ok=True)
             slim = {"rows": rows, "latency_s": latency}
-            (CACHE_DIR / (cache_name + ".json")).write_text(
+            (d / (cache_name + ".json")).write_text(
                 json.dumps(slim, ensure_ascii=False, default=str)
             )
         except Exception:
