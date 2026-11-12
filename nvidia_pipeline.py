@@ -20,13 +20,21 @@ from post_ocr import apply_post_ocr_corrections
 
 # Reuse prompt + parse helpers from the app/harness style
 NIM_URL = "https://integrate.api.nvidia.com/v1/chat/completions"
-NIM_MODEL = "meta/llama-3.2-90b-vision-instruct"
+# Primary + fallback chosen from a 2026-11-12 probe of this key's live catalog
+# (GET /v1/models, then chat-completions on a synthetic non-PII bill image).
+# meta/llama-3.2-90b-vision-instruct is listed as deprecated 15 Nov / unsupported after
+# 16 Nov 2026 — dropped, because Demo Day is 1 Dec.
+# Rejected on this key: llama-3.2-11b-vision (410), gemma-4-31b-it (404),
+# gemma-3-12b/4b-it (404), phi-3-vision (404), vila (404), kimi-k2.6 (404),
+# cosmos-reason2-8b (404). nemotron-3.5-super-vl-120b-a12b timed out at 60s.
+# Primary: nvidia/nemotron-3-nano-omni-30b-a3b-reasoning — 200 in 29.8s, 17/17 digits,
+#   post-OCR/self-checks passed.
+# Fallback: minimaxai/minimax-m3.1-flash — 200 in 30.2s, all key digits correct,
+#   post-OCR/self-checks passed.
+NIM_MODEL = "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning"
 NIM_TIMEOUT = 60  # first attempt
-NIM_FALLBACK_TIMEOUT = 45
-# meta/llama-3.2-11b-vision-instruct returned HTTP 410 on this key (2026-11-12, 0.04s).
-# google/gemma-4-31b-it is a current NVIDIA-hosted multimodal model (text+image, free endpoint
-# still listed Available). Not live-probed: the 1-call budget was used on 11b.
-NIM_FALLBACK_MODEL = "google/gemma-4-31b-it"
+NIM_FALLBACK_TIMEOUT = 60
+NIM_FALLBACK_MODEL = "minimaxai/minimax-m3.1-flash"
 JPEG_QUALITY = 85
 MAX_SIDE = 1600
 TEMPERATURE = 0

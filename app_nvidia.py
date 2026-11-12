@@ -41,6 +41,7 @@ from nvidia_pipeline import (
     nvidia_key_configured,
     format_nvidia_user_message,
     NIM_TIMEOUT,
+    NIM_MODEL,
     NIM_FALLBACK_MODEL,
 )
 from scenarios import get_scenario
@@ -60,7 +61,6 @@ from dashboard import build_dashboard_model, render_dashboard, CSS
 # NVIDIA NIM vision
 # -----------------------------------------------------------------------------
 NIM_URL = "https://integrate.api.nvidia.com/v1/chat/completions"
-NIM_MODEL = "meta/llama-3.2-90b-vision-instruct"
 MAX_SIDE = 1600
 
 SCHEMA_BLOCK = """

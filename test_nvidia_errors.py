@@ -51,6 +51,14 @@ class FormatErrorTests(unittest.TestCase):
         self.assertIn("సర్వర్ నెమ్మదిగా ఉంది", msg)
 
 
+class SelectedModelsTests(unittest.TestCase):
+    def test_primary_and_fallback_are_live_models(self):
+        self.assertEqual(NIM_MODEL, "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning")
+        self.assertEqual(NIM_FALLBACK_MODEL, "minimaxai/minimax-m3.1-flash")
+        self.assertNotIn("llama-3.2-90b", NIM_MODEL)
+        self.assertNotIn("gemma-4-31b", NIM_FALLBACK_MODEL)
+
+
 class DownscaleTests(unittest.TestCase):
     def test_long_side_and_payload(self):
         img = Image.new("RGB", (4000, 1200), color=(200, 180, 40))
