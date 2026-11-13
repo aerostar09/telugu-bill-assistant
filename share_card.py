@@ -392,7 +392,10 @@ def render_share_tab(result: Optional[Dict[str, Any]] = None, *, on_try_demo=Non
     text = short_share_text(bill, forecast_range=rng, totals_ok=bool(totals_ok))
     png = make_share_png(bill, forecast_range=rng)
 
-    st.image(png, width="stretch")
+    try:
+        st.image(png, width="stretch")
+    except TypeError:
+        st.image(png, use_container_width=True)
     render_web_share_button(png, text)
     render_share_controls(model, spoken_summary=spoken, forecast_range=rng)
     if spoken:
