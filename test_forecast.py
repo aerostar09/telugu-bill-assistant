@@ -126,3 +126,38 @@ class TestRoundedRange(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestConsumerFacingForecast(unittest.TestCase):
+    def _quotes(self):
+        return {
+            "likely": 150,
+            "quotes": {
+                "likely": {"total": 752.14},
+                "low": {"total": 607.31},
+                "high": {"total": 896.97},
+            },
+        }
+
+    def test_hero_range_matches_example_band(self):
+        from forecast import consumer_forecast_range, format_rupee_range, round_nearest_rupees
+        rng = consumer_forecast_range(forecast=self._quotes())
+        self.assertEqual(rng["low"], 600)
+        self.assertEqual(rng["high"], 900)
+        self.assertEqual(rng["likely_display"], 750)
+        self.assertEqual(round_nearest_rupees(752.14), 750)
+        self.assertEqual(format_rupee_range(rng["low"], rng["high"]), "₹600–₹900")
+
+    def test_share_text_and_whatsapp_summary_use_the_same_band(self):
+        from forecast import consumer_forecast_range
+        from share_card import short_share_text
+        from dashboard import whatsapp_summary
+        from test_lt_notice import lt_notice
+        fc = self._quotes()
+        rng = consumer_forecast_range(forecast=fc)
+        share = short_share_text(lt_notice(), forecast_range=rng, totals_ok=True)
+        wa = whatsapp_summary(lt_notice(), forecast=fc)
+        for blob in (share, wa):
+            self.assertIn("₹600–₹900", blob)
+            for forbidden in ("752.14", "607.31", "896.97", "₹752", "₹607", "₹896"):
+                self.assertNotIn(forbidden, blob)

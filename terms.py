@@ -15,7 +15,7 @@ TERMS = {
     "app_title": "మీ విద్యుత్ బిల్లు సహాయకుడు",
     "app_tagline": "బిల్లు ఫోటో పెడితే ఈ నెల మొత్తం, ఎందుకు పెరిగింది, వచ్చే నెల అంచనా చూపిస్తాం.",
     "tab_citizen": "పౌరుడు / Citizen",
-    "tab_whatsapp": "WhatsApp డెమో",
+    "tab_whatsapp": "📲 షేర్ / WhatsApp",
     "tab_discom": "DISCOM dashboard",
     "nav_understand": "బిల్లు",
     "nav_understand_en": "Understand the bill",

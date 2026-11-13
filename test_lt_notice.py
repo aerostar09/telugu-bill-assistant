@@ -318,8 +318,10 @@ class CompressedThermalExtractTests(unittest.TestCase):
         # Typoed mid-digit readings may still fail a diagnostic check.
         # The consumer banner must not go red when the printed total matches.
         conf = confidence_level(checks, notes)
-        self.assertNotEqual(conf["level"], "red")
-        self.assertNotEqual(conf["label_te"], "లెక్కల్లో తేడా ఉంది")
+        self.assertEqual(conf["level"], "green")
+        self.assertTrue(conf["show_on_hero"])
+        self.assertEqual(conf["label_te"], "స్పష్టంగా చదివాం")
+        self.assertNotEqual(conf["label_te"], "కొన్ని అంకెలు సరిచేశాం")
         self.assertNotIn("1912", conf["label_te"])
 
 
@@ -343,6 +345,43 @@ class ShareTextPrivacyTests(unittest.TestCase):
         ):
             self.assertNotIn(forbidden, text)
         self.assertIn("46 యూనిట్లు దాటితే రేటు పెరుగుతుంది", text)
+
+
+
+class HeroPillAndReasonCopyTests(unittest.TestCase):
+    def test_hero_pill_is_green_even_when_repairs_ran(self):
+        conf = confidence_level(
+            {"consumer_ok": True, "ok": False, "sum_eq_bill": True},
+            corrections=["auto-correct chesam: thermal line shift"],
+            image_quality="blurry",
+        )
+        self.assertEqual(conf["level"], "green")
+        self.assertTrue(conf["show_on_hero"])
+        self.assertEqual(conf["label_te"], "స్పష్టంగా చదివాం")
+        self.assertNotIn("కొన్ని అంకెలు", conf["label_te"])
+
+    def test_hero_pill_is_red_only_for_a_genuine_mismatch(self):
+        conf = confidence_level({"consumer_ok": False, "sum_eq_bill": False})
+        self.assertEqual(conf["level"], "red")
+        self.assertTrue(conf["show_on_hero"])
+        self.assertIn("తేడా", conf["label_te"])
+
+    def test_unchecked_bill_hides_the_hero_pill(self):
+        conf = confidence_level({})
+        self.assertFalse(conf["show_on_hero"])
+        self.assertEqual(conf["level"], "hidden")
+
+    def test_trueup_reason_has_distinct_explanation(self):
+        from citizen_summary import trueup_explain_te
+        bill = lt_notice()
+        detail = trueup_explain_te(bill)
+        self.assertEqual(detail, "2022-23 బాకీ, 96 యూనిట్లు × 30 పైసలు")
+        reasons = top_reasons(jump=None, late=None, bill=bill)
+        tu = next(r for r in reasons if r["key"] == "trueup_charges")
+        self.assertEqual(tu["title_te"], "ట్రూ-అప్ (పాత సంవత్సరం సర్దుబాటు)")
+        self.assertEqual(tu["voice_te"], detail)
+        self.assertNotEqual(tu["voice_te"], tu["title_te"])
+        self.assertNotIn(tu["title_te"], tu["voice_te"])
 
 
 if __name__ == "__main__":

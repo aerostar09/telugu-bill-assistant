@@ -49,6 +49,21 @@ def _amt(v: Any) -> Optional[float]:
         return None
 
 
+def trueup_explain_te(bill: Optional[Dict[str, Any]] = None) -> str:
+    """Short distinct true-up explanation (never repeats the title)."""
+    bill = bill or {}
+    tu_u = _amt(bill.get("trueup_units"))
+    try:
+        from tariff import trueup_rate_for_bill_date
+        rate = float(trueup_rate_for_bill_date(bill.get("bill_date")))
+    except Exception:
+        rate = 0.30
+    paise = int(round(rate * 100))
+    if tu_u is not None and tu_u > 0:
+        return f"2022-23 బాకీ, {int(tu_u)} యూనిట్లు × {paise} పైసలు"
+    return "పాత సంవత్సరం పవర్ ఖర్చు సర్దుబాటు"
+
+
 def top_reasons(
     jump: Optional[Dict[str, Any]] = None,
     late: Optional[Dict[str, Any]] = None,
@@ -94,13 +109,14 @@ def top_reasons(
                     "key": "trueup_charges",
                     "title_te": "ట్రూ-అప్ (పాత సంవత్సరం సర్దుబాటు)",
                     "amount": round(tu, 2),
-                    "voice_te": "ట్రూ-అప్ (పాత సంవత్సరం సర్దుబాటు) ఈ బిల్లులో ఉంది.",
+                    "voice_te": trueup_explain_te(bill),
                 })
             else:
-                # Rename the jump reason to the clearer label.
+                # Rename the jump reason to the clearer label + a distinct explanation.
                 for c in cands:
                     if c["key"] == "trueup_added":
                         c["title_te"] = "ట్రూ-అప్ (పాత సంవత్సరం సర్దుబాటు)"
+                        c["voice_te"] = trueup_explain_te(bill)
         # Genuine DPS only when it is present, nonzero, and distinct from true-up.
         sur = _amt(bill.get("surcharge"))
         if sur is not None and abs(sur) >= _MIN_REASON_RS:
@@ -128,21 +144,30 @@ def confidence_level(
     corrections: Optional[List[str]] = None,
     image_quality: Optional[str] = None,
 ) -> Dict[str, str]:
-    """green / yellow / red pill for the hero card."""
+    """Hero-card pill: green when the printed total matches, red on a genuine mismatch.
+
+    Repair notes and messy-photo flags do not get a yellow hero pill — those
+    belong in the లెక్క tab / technical expander only.
+    """
     checks = checks or {}
     ok = checks.get("consumer_ok")
     if ok is None:
         ok = checks.get("ok")
-    dirty = bool(corrections)
-    q = (image_quality or "").lower()
-    messy_photo = q in {"cropped", "crumpled", "blurry"}
     if ok is False:
-        return {"level": "red", "label_te": "లెక్కల్లో తేడా ఉంది", "css": "badge-red"}
-    if ok and (dirty or messy_photo or checks.get("ok") is False):
-        return {"level": "yellow", "label_te": "కొన్ని అంకెలు సరిచేశాం", "css": "badge-yellow"}
+        return {
+            "level": "red",
+            "label_te": "లెక్కల్లో తేడా ఉంది",
+            "css": "badge-red",
+            "show_on_hero": True,
+        }
     if ok:
-        return {"level": "green", "label_te": "స్పష్టంగా చదివాం", "css": "badge-green"}
-    return {"level": "yellow", "label_te": "ఇంకా సరిచూడలేదు", "css": "badge-yellow"}
+        return {
+            "level": "green",
+            "label_te": "స్పష్టంగా చదివాం",
+            "css": "badge-green",
+            "show_on_hero": True,
+        }
+    return {"level": "hidden", "label_te": "", "css": "", "show_on_hero": False}
 
 
 def printed_vs_calculated(bill: Dict[str, Any]) -> Dict[str, Any]:

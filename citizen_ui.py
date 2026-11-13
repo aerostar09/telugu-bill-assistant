@@ -12,7 +12,7 @@ from citizen_summary import (
     printed_vs_calculated,
     build_voice_summary,
 )
-from forecast import forecast_display_range
+from forecast import forecast_display_range, consumer_forecast_range, format_rupee_range
 from terms import t, rupees_display, TARIFF_VERSION
 from bill_lines import payable_amount
 from receipt_ui import render_receipt_card, render_units_bar, next_units_cliff
@@ -25,6 +25,12 @@ def render_hero_card(model: Dict[str, Any], corrections: Optional[List[str]] = N
     due = bill.get("due_date") or "—"
     unit_bit = f"{int(units)} {t('units')}" if units is not None else ""
     payable = payable_amount(bill)
+    pill = ""
+    if conf.get("show_on_hero") and conf.get("label_te"):
+        pill = (
+            f'<span class="badge {conf["css"]}" data-testid="confidence-pill">'
+            f'{conf["label_te"]}</span>'
+        )
     st.markdown(
         f'<div class="bill-hero" data-testid="bill-hero">'
         f'<div class="bill-hero-label">{t("this_month_bill")}</div>'
@@ -32,7 +38,7 @@ def render_hero_card(model: Dict[str, Any], corrections: Optional[List[str]] = N
         f'<div class="bill-hero-meta">'
         f"<span>{unit_bit}</span>"
         f'<span>{t("due_date")} {due}</span>'
-        f'<span class="badge {conf["css"]}" data-testid="confidence-pill">{conf["label_te"]}</span>'
+        f"{pill}"
         f"</div></div>",
         unsafe_allow_html=True,
     )
@@ -69,7 +75,8 @@ def render_top_reasons(model: Dict[str, Any], max_n: int = 3) -> List[Dict[str, 
     parts = ['<div class="reason-card" data-testid="reasons-card">']
     for r in reasons:
         parts.append(
-            f'<div class="reason-row"><span class="why">{r["title_te"]} — {r["voice_te"]}</span>'
+            f'<div class="reason-row"><span class="why"><b>{r["title_te"]}</b>'
+            f'<small>{r["voice_te"]}</small></span>'
             f'<span class="amt">{_inr(r["amount"], signed=True)}</span></div>'
         )
     parts.append("</div>")
@@ -89,13 +96,15 @@ def render_main_understand(
 
     render_hero_card(model, corrections)
     render_match_banner(model)
+    from forecast import consumer_forecast_range, format_rupee_range
     render_receipt_card(model["bill"])
     render_units_bar(model["bill"])
-    rng = forecast_display_range(model.get("forecast"))
+    rng = consumer_forecast_range(forecast=model.get("forecast"))
     if rng:
+        band = format_rupee_range(rng["low"], rng["high"])
         st.markdown(
             f'<div class="forecast-one" data-testid="forecast-one">'
-            f'వచ్చే నెల అంచనా <b>₹{rng["low"]}–₹{rng["high"]}</b>'
+            f'వచ్చే నెల అంచనా <b>{band}</b>'
             f' (ఇదే వాడకం ఉంటే)</div>',
             unsafe_allow_html=True,
         )
@@ -106,8 +115,7 @@ def render_main_understand(
     if spoken:
         st.markdown(f"##### {t('voice')}")
         render_voice_note(spoken)
-    from share_card import render_share_controls
-    render_share_controls(model, spoken_summary=spoken, forecast_range=rng)
+    st.caption("చిత్రం డౌన్‌లోడ్ / WhatsApp షేర్ → 📲 షేర్ ట్యాబ్.")
 
 
 def render_jump_card(model: Dict[str, Any]) -> None:
@@ -277,7 +285,7 @@ def render_estimate_section(model: Dict[str, Any]) -> None:
         st.markdown(
             f'<div class="bill-hero" data-testid="forecast-range">'
             f'<div class="bill-hero-label">{t("estimate")}</div>'
-            f'<div class="bill-hero-amt">₹{rng["low"]}–₹{rng["high"]}</div>'
+            f'<div class="bill-hero-amt">{format_rupee_range(rng["low"], rng["high"])}</div>'
             f"</div>",
             unsafe_allow_html=True,
         )

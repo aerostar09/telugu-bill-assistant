@@ -47,8 +47,8 @@ from nvidia_pipeline import (
 )
 from scenarios import get_scenario
 from voice import render_voice_note
-from wa_simulator import render_wa_simulator
 from discom_dashboard import render_discom_dashboard
+from share_card import render_share_tab
 from tariff import estimate_next_with_trueup
 from draft_features import trueup_explainer, jump_card_text, cliff_card_text
 from demo_data import lakshmi_demo_bundle
@@ -764,11 +764,14 @@ def main() -> None:
     )
 
     # Query param demo=1 auto-loads PII-free Lakshmi data (for screenshots).
+    # ?view=discom opens the pitch-only DISCOM dashboard.
     try:
         qp = st.query_params
         demo_q = str(qp.get("demo", "") or "").lower() in {"1", "true", "yes"}
+        discom_q = str(qp.get("view", "") or "").lower() == "discom"
     except Exception:
         demo_q = False
+        discom_q = False
 
     if "result" not in st.session_state:
         st.session_state["result"] = None
@@ -782,6 +785,13 @@ def main() -> None:
             value=demo_q,
             help="Ground-truth Lakshmi bills + synthetic 13-month history. No NVIDIA call.",
             key="demo_mode",
+        )
+        if "discom_officials_view" not in st.session_state:
+            st.session_state["discom_officials_view"] = discom_q
+        discom_mode = st.checkbox(
+            "For DISCOM officials (pitch demo)",
+            help="Concept dashboard for the TISC pitch — not shown as a consumer tab.",
+            key="discom_officials_view",
         )
         use_sarvam = False
         with st.expander(t("technical"), expanded=False):
@@ -823,15 +833,23 @@ def main() -> None:
         st.session_state["result"] = _demo_result()
         st.session_state["prev_result"] = None
 
-    tab_citizen, tab_wa, tab_discom = st.tabs(
-        [t("tab_citizen"), t("tab_whatsapp"), t("tab_discom")]
+    if discom_mode:
+        st.caption("For DISCOM officials (pitch demo) — Demo / Concept, not an official TGSPDCL service.")
+        render_discom_dashboard()
+        return
+
+    tab_citizen, tab_share = st.tabs(
+        [t("tab_citizen"), t("tab_whatsapp")]
     )
     with tab_citizen:
         render_citizen_tab(demo, use_sarvam)
-    with tab_wa:
-        render_wa_simulator(st.session_state.get("result"))
-    with tab_discom:
-        render_discom_dashboard()
+    with tab_share:
+        from share_card import render_share_tab as _render_share_tab
+        def _try_demo():
+            st.session_state["result"] = _demo_result()
+            st.session_state["prev_result"] = None
+            st.rerun()
+        _render_share_tab(st.session_state.get("result"), on_try_demo=_try_demo)
 
 
 if __name__ == "__main__":

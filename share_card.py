@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import io
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 from urllib.parse import quote
 
 from PIL import Image, ImageDraw, ImageFont, features
@@ -132,8 +132,12 @@ def short_share_text(
     for r in nonzero_rows(bill)[:8]:
         sign = "−" if r["amount"] < 0 or r["key"] == "subsidy" else ""
         lines.append(f"• {r['name_te']} {sign}₹{abs(r['amount']):,.2f}")
-    if forecast_range and forecast_range.get("low") is not None:
-        lines.append(f"📈 వచ్చే నెల అంచనా ₹{forecast_range['low']}–₹{forecast_range['high']}")
+    from forecast import consumer_forecast_range, format_rupee_range
+    rng = consumer_forecast_range(forecast_range=forecast_range)
+    if rng:
+        band = format_rupee_range(rng["low"], rng["high"])
+        if band:
+            lines.append(f"📈 వచ్చే నెల అంచనా {band}")
     cliff = next_units_cliff(bill.get("units"))
     if cliff and cliff.get("headroom"):
         lines.append(f"💡 {cliff['message_te']}")
@@ -160,6 +164,8 @@ def make_share_png(
     *,
     forecast_range: Optional[Dict[str, Any]] = None,
 ) -> bytes:
+    from forecast import consumer_forecast_range, format_rupee_range
+    forecast_range = consumer_forecast_range(forecast_range=forecast_range)
     W = 1080
     rows = nonzero_rows(bill)
     # Header + amount + meta + rows + tip + QR + footer. Keep the rounded card intact.
@@ -212,7 +218,7 @@ def make_share_png(
         d.rounded_rectangle((70, y, W - 70, y + 70), radius=14, fill=(240, 253, 250))
         _draw_mixed(
             d, (90, y + 16),
-            f"వచ్చే నెల అంచనా  ₹{forecast_range['low']}–₹{forecast_range['high']}",
+            f"వచ్చే నెల అంచనా  {format_rupee_range(forecast_range['low'], forecast_range['high'])}",
             26,
             TEAL_DARK,
             bold=True,
@@ -250,6 +256,10 @@ def render_share_controls(
     totals_ok = checks.get("consumer_ok")
     if totals_ok is None:
         totals_ok = checks.get("ok")
+    from forecast import consumer_forecast_range
+    forecast_range = consumer_forecast_range(
+        forecast=model.get("forecast"), forecast_range=forecast_range
+    )
     text = short_share_text(
         bill,
         forecast_range=forecast_range,
@@ -277,3 +287,126 @@ def render_share_controls(
             unsafe_allow_html=True,
         )
     st.caption("చిత్రంలో పేరు, చిరునామా, సర్వీస్ నంబర్ లేవు.")
+
+
+
+def compact_extracted_summary(bill: Dict[str, Any]) -> List[tuple]:
+    """PII-free extracted fields for the share tab (no USC, name, meter readings)."""
+    rows: List[tuple] = []
+    labels = [
+        ("category", "కేటగిరీ"),
+        ("contracted_load_kw", "కాంట్రాక్టెడ్ లోడ్ (kW)"),
+        ("units", "యూనిట్లు"),
+        ("days", "రోజులు"),
+        ("recorded_md", "Recorded MD"),
+        ("bill_date", "బిల్లు తేదీ"),
+        ("due_date", "గడువు"),
+        ("disc_date", "Disc Date"),
+        ("last_paid_date", "Last Paid"),
+    ]
+    for key, label in labels:
+        val = bill.get(key)
+        if val is None or val == "":
+            continue
+        rows.append((label, str(val)))
+    for r in nonzero_rows(bill):
+        sign = "−" if r["amount"] < 0 or r["key"] == "subsidy" else ""
+        rows.append((r["name_te"], f"{sign}₹{abs(r['amount']):,.2f}"))
+    pay = payable_amount(bill)
+    if pay is not None:
+        rows.append(("మొత్తం చెల్లింపు", f"₹{int(round(pay))}"))
+    return rows
+
+
+def render_web_share_button(png: bytes, text: str, *, key: str = "webshare") -> None:
+    """Try navigator.share with the PNG; fall back to wa.me in the same click."""
+    import base64
+    import json
+    import streamlit.components.v1 as components
+    b64 = base64.b64encode(png).decode("ascii")
+    payload = json.dumps({"text": text, "url": whatsapp_share_url(text), "b64": b64})
+    # JSON is inserted as a JS literal; quotes are escaped by json.dumps.
+    html = f"""<!DOCTYPE html>
+<html><head><meta charset="utf-8">
+<style>
+  body{{margin:0;font-family:sans-serif;}}
+  button{{width:100%;background:#128C7E;color:#fff;border:0;border-radius:10px;
+    padding:.7rem 1rem;font-weight:700;font-size:1rem;cursor:pointer;}}
+  button:active{{background:#0b554c;}}
+</style></head>
+<body>
+<button id="s" type="button">చిత్రాన్ని షేర్ చేయండి</button>
+<script>
+const P = {payload};
+async function go() {{
+  try {{
+    const resp = await fetch("data:image/png;base64," + P.b64);
+    const blob = await resp.blob();
+    const file = new File([blob], "telugu-bill-summary.png", {{type: "image/png"}});
+    const data = {{files: [file], title: "మీ విద్యుత్ బిల్లు", text: P.text}};
+    if (navigator.canShare && navigator.canShare({{files: [file]}})) {{
+      await navigator.share(data);
+      return;
+    }}
+    if (navigator.share) {{
+      await navigator.share({{title: "మీ విద్యుత్ బిల్లు", text: P.text}});
+      return;
+    }}
+  }} catch (e) {{
+    if (e && e.name === "AbortError") return;
+  }}
+  window.open(P.url, "_blank", "noopener");
+}}
+document.getElementById("s").addEventListener("click", go);
+</script>
+</body></html>"""
+    components.html(html, height=58, scrolling=False)
+
+
+def render_share_tab(result: Optional[Dict[str, Any]] = None, *, on_try_demo=None) -> None:
+    """Share / WhatsApp tab: uses the bill already uploaded in the citizen tab."""
+    import streamlit as st
+    from citizen_summary import build_voice_summary, top_reasons
+    from forecast import consumer_forecast_range
+    from voice import render_voice_note
+
+    if not result or not result.get("bill"):
+        st.info("ముందు పౌరుడు ట్యాబ్‌లో బిల్లు ఫోటో అప్‌లోడ్ చేయండి. అప్పుడు ఇక్కడే షేర్ చిత్రం వస్తుంది.")
+        if on_try_demo is not None and st.button("నమూనా బిల్లు చూడండి", key="share_try_demo"):
+            on_try_demo()
+        st.caption("కాన్సెప్ట్: TGSPDCL WhatsApp 87124 41912 లోకి ప్లగ్ చేయవచ్చు.")
+        return
+
+    model = result.get("model") or {"bill": result["bill"], "checks": result.get("checks")}
+    bill = model["bill"]
+    rng = consumer_forecast_range(
+        forecast=model.get("forecast"),
+        forecast_range=None,
+    )
+    checks = model.get("checks") or result.get("checks") or {}
+    totals_ok = checks.get("consumer_ok")
+    if totals_ok is None:
+        totals_ok = checks.get("ok")
+    reasons = top_reasons(model.get("jump"), model.get("late"), bill)
+    spoken = build_voice_summary(bill, reasons=reasons, forecast_range=rng)
+    text = short_share_text(bill, forecast_range=rng, totals_ok=bool(totals_ok))
+    png = make_share_png(bill, forecast_range=rng)
+
+    st.image(png, width="stretch")
+    render_web_share_button(png, text)
+    render_share_controls(model, spoken_summary=spoken, forecast_range=rng)
+    if spoken:
+        st.markdown("##### వినండి / Listen in Telugu")
+        render_voice_note(spoken)
+    st.markdown("##### సారాంశం")
+    parts = ['<div class="receipt" data-testid="share-extract">']
+    for label, val in compact_extracted_summary(bill):
+        parts.append(
+            f'<div class="rc-row" style="display:flex;justify-content:space-between;'
+            f'padding:6px 0;line-height:1.2;border-bottom:1px dashed #e5eeec;">'
+            f'<span>{label}</span><span class="rc-amt">{val}</span></div>'
+        )
+    parts.append("</div>")
+    st.markdown("".join(parts), unsafe_allow_html=True)
+    st.caption("కాన్సెప్ట్: TGSPDCL WhatsApp 87124 41912 లోకి ప్లగ్ చేయవచ్చు.")
+    st.caption("చిత్రంలో పేరు, చిరునామా, సర్వీస్ నంబర్, మీటర్ రీడింగ్ లేవు.")

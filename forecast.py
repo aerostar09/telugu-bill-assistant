@@ -535,6 +535,7 @@ def forecast_display_range(fc: Optional[Dict[str, Any]], step: int = 100) -> Opt
     rng["low_exact"] = lo
     rng["high_exact"] = hi
     rng["likely_exact"] = likely
+    rng["likely_display"] = round_nearest_rupees(likely)
     rng["basis"] = (
         f"ఈ అంచనా {src} ఆధారంగా, టారిఫ్ FY 2026-27 TGERC. "
         f"సుమారు ₹{rng['low']}–₹{rng['high']} "
@@ -542,3 +543,59 @@ def forecast_display_range(fc: Optional[Dict[str, Any]], step: int = 100) -> Opt
     )
     return rng
 
+
+
+
+def round_nearest_rupees(value: Any, step: int = 10) -> Optional[int]:
+    """Round a rupee amount to the nearest `step` (default ₹10). No paise."""
+    if value is None or value == "":
+        return None
+    try:
+        n = float(value)
+    except (TypeError, ValueError):
+        return None
+    step = int(step) if step else 10
+    return int(round(n / step) * step)
+
+
+def format_rupee_range(low: Any, high: Any) -> Optional[str]:
+    """Consumer-facing range, e.g. '₹600–₹900'."""
+    if low is None or high is None:
+        return None
+    try:
+        return f"₹{int(low)}–₹{int(high)}"
+    except (TypeError, ValueError):
+        return None
+
+
+def consumer_forecast_range(
+    forecast: Optional[Dict[str, Any]] = None,
+    forecast_range: Optional[Dict[str, Any]] = None,
+    step: int = 100,
+) -> Optional[Dict[str, Any]]:
+    """The same rounded range the hero card and share PNG use.
+
+    Prefer a full forecast (with quotes) so every surface stays in sync.
+    A pre-rounded forecast_range (with a 'step' key) is passed through.
+    Raw paise lows/highs are re-banded with round_rupee_range.
+    """
+    if forecast:
+        rng = forecast_display_range(forecast, step=step)
+        if rng:
+            rng["likely_display"] = round_nearest_rupees(rng.get("likely_exact"))
+            return rng
+    if forecast_range and forecast_range.get("low") is not None and forecast_range.get("high") is not None:
+        if forecast_range.get("step") is not None:
+            out = dict(forecast_range)
+            if out.get("likely_display") is None:
+                out["likely_display"] = round_nearest_rupees(
+                    out.get("likely_exact") or out.get("likely")
+                )
+            return out
+        rng = round_rupee_range(forecast_range.get("low"), forecast_range.get("high"), step=step)
+        if rng:
+            rng["likely_display"] = round_nearest_rupees(
+                forecast_range.get("likely_exact") or forecast_range.get("likely")
+            )
+            return rng
+    return None

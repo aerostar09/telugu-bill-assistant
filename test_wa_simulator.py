@@ -1,79 +1,50 @@
-"""WhatsApp demo chat: short reply, concept labels, no PII, no paid APIs."""
+"""Share / WhatsApp tab helpers: PII-free summary, rounded forecast, no fake chat."""
 from __future__ import annotations
 
 import unittest
 
 from demo_data import lakshmi_demo_bundle
 from dashboard import build_dashboard_model
+from forecast import consumer_forecast_range, format_rupee_range
 from self_checks import run_all_checks
-from wa_simulator import (
-    CONCEPT_EN,
-    CONCEPT_TE,
-    BANNER_HTML,
-    USER_PHOTO_CAPTION,
-    build_wa_reply,
-    default_wa_thread,
-    _result_key,
-    _render_messages,
-)
+from share_card import compact_extracted_summary, short_share_text
 
 
-class WhatsAppDemoTests(unittest.TestCase):
-    def test_concept_labels_are_explicit(self):
-        self.assertIn("Demo / Concept", CONCEPT_EN)
-        self.assertIn("not an official TGSPDCL service", CONCEPT_EN)
-        self.assertIn("సిమ్యులేషన్", CONCEPT_TE)
-        self.assertIn("87124 41912", CONCEPT_TE)
-        self.assertIn("Explain my bill", CONCEPT_TE)
-        self.assertIn(CONCEPT_TE, BANNER_HTML)
-        self.assertIn(CONCEPT_EN, BANNER_HTML)
+CONCEPT_LINE = "కాన్సెప్ట్: TGSPDCL WhatsApp 87124 41912 లోకి ప్లగ్ చేయవచ్చు."
 
-    def test_lakshmi_reply_is_the_short_summary(self):
+
+class ShareTabHelperTests(unittest.TestCase):
+    def test_concept_note_mentions_official_whatsapp(self):
+        self.assertIn("87124 41912", CONCEPT_LINE)
+        self.assertIn("TGSPDCL WhatsApp", CONCEPT_LINE)
+
+    def test_extracted_summary_has_no_identity_or_meter_readings(self):
+        bill = dict(lakshmi_demo_bundle()["bill"])
+        bill["usc_no"] = "SYN-SHOULD-NOT-APPEAR"
+        bill["prev_reading"] = 11000
+        bill["present_reading"] = 11154
+        rows = compact_extracted_summary(bill)
+        blob = " ".join(f"{a} {b}" for a, b in rows)
+        self.assertIn("154", blob)
+        self.assertIn("757", blob)
+        for forbidden in ("SYN-SHOULD-NOT-APPEAR", "11000", "11154", "usc", "USC", "Jayaram", "Mamidi"):
+            self.assertNotIn(forbidden, blob)
+        keys = [a for a, _ in rows]
+        self.assertNotIn("ప్రెజెంట్ రీడింగ్", keys)
+
+    def test_share_text_uses_hero_forecast_band(self):
         bundle = lakshmi_demo_bundle()
         model = build_dashboard_model(
             bundle["bill"], bundle["prev_bill"], run_all_checks(bundle["bill"])
         )
-        result = {"bill": bundle["bill"], "prev_bill": bundle["prev_bill"], "model": model}
-        text = build_wa_reply(result)
-        self.assertIn("757", text)
-        self.assertIn("154", text)
-        self.assertIn("రూపాయలు", text)
-        # Must stay the short voice script, not the long charge template.
-        self.assertNotIn("599.20", text)
-        self.assertNotIn("కస్టమర్ ఛార్జీ", text)
-        # Default (no result) uses the same PII-free demo numbers.
-        self.assertEqual(build_wa_reply(None), text)
-
-    def test_default_thread_has_photo_and_short_reply(self):
-        thread = default_wa_thread(None)
-        self.assertEqual(thread[1]["role"], "user")
-        self.assertEqual(thread[1]["image"], "thumb")
-        self.assertEqual(thread[1]["text"], USER_PHOTO_CAPTION)
-        self.assertTrue(thread[2].get("audio"))
-        self.assertIn("757", thread[2]["text"])
-        # Fictional sample only — never a real consumer name or USC.
-        blob = " ".join(str(m.get("text") or "") for m in thread)
-        self.assertNotIn("Jayaram", blob)
-        self.assertNotIn("Mamidi", blob)
-        self.assertNotRegex(blob, r"\bUSC\b")
-
-    def test_render_includes_thumb_and_concept_header(self):
-        html = _render_messages(
-            default_wa_thread(None),
-            audio_uri="",
-            thumb_uri="data:image/png;base64,AAA",
-        )
-        self.assertIn("data-testid=\"wa-frame\"", html)
-        self.assertIn("wa-thumb", html)
-        self.assertIn(CONCEPT_EN, html)
-        self.assertIn("WhatsApp డెమో", html)
-        self.assertIn("fictional, no PII", html)
-
-    def test_result_key_changes_with_units(self):
-        a = {"bill": {"units": 154, "bill_amount": 757}, "display_name": "demo"}
-        b = {"bill": {"units": 82, "bill_amount": 314}, "display_name": "demo"}
-        self.assertNotEqual(_result_key(a), _result_key(b))
-        self.assertEqual(_result_key(None), "demo-default")
+        rng = consumer_forecast_range(forecast=model.get("forecast"))
+        self.assertIsNotNone(rng)
+        band = format_rupee_range(rng["low"], rng["high"])
+        text = short_share_text(bundle["bill"], forecast_range=rng, totals_ok=True)
+        self.assertIn(band, text)
+        # No leftover paise from the precise quote.
+        self.assertNotIn("655.91", text)
+        self.assertNotIn(".", text.split("అంచనా", 1)[-1].split("\n")[0] if "అంచనా" in text else "")
 
 
 if __name__ == "__main__":
