@@ -23,6 +23,9 @@ venv/
 *.heic
 *.pdf
 !docs/**
+# Concept / demo assets only (QR, fictional bill, portal screenshots)
+!assets/
+!assets/**
 
 # OS / editor
 .DS_Store

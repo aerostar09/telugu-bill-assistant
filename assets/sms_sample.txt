@@ -1,0 +1,10 @@
+Demo / Concept – not an official TGSPDCL service.
+
+తెలుగు:
+మీ విద్యుత్ బిల్లు ₹757 (154 యూనిట్లు). అర్థం కాలేదా? లింక్ తెరిచి, బిల్లు ఫోటో పెట్టి తెలుగులో చూడండి:
+https://telugu-electricitybill-assistant.streamlit.app/
+
+English:
+Your electricity bill is ₹757 (154 units). Need an explanation? Open the link, upload a photo, and read it in Telugu.
+
+This is a sample SMS for a pitch / demo. It is not a message from a DISCOM.

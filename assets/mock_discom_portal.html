@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="te">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Your DISCOM portal (concept) – Explain my bill</title>
+  <style>
+    :root {
+      --ink: #12203a;
+      --muted: #5b6b80;
+      --line: #d7dee8;
+      --bg: #f3f6fa;
+      --card: #ffffff;
+      --teal: #0f6e62;
+      --teal-dark: #0b554c;
+      --amber: #fff6d9;
+      --amber-line: #e8c56b;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: "Noto Sans Telugu", "Hind Guntur", "Liberation Sans", "DejaVu Sans", sans-serif;
+      background: var(--bg);
+      color: var(--ink);
+      line-height: 1.45;
+    }
+    header {
+      background: var(--teal);
+      color: #fff;
+      padding: 14px 20px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+    }
+    header .brand { font-weight: 700; font-size: 1.05rem; }
+    header .sub { font-size: 0.78rem; opacity: 0.9; font-weight: 400; }
+    header .lang { font-size: 0.8rem; opacity: 0.9; }
+    .wrap { max-width: 1080px; margin: 0 auto; padding: 16px; }
+    .banner {
+      background: var(--amber);
+      border: 1px solid var(--amber-line);
+      color: #5c4a12;
+      border-radius: 12px;
+      padding: 12px 14px;
+      font-size: 0.92rem;
+      margin-bottom: 16px;
+    }
+    h1 { font-size: 1.25rem; margin: 0 0 6px; }
+    .lede { color: var(--muted); margin: 0 0 16px; }
+    .grid { display: grid; grid-template-columns: 1.2fr 0.8fr; gap: 16px; }
+    @media (max-width: 720px) { .grid { grid-template-columns: 1fr; } }
+    .card {
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      padding: 18px;
+    }
+    .card h2 { font-size: 1rem; margin: 0 0 12px; }
+    .row {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 8px 0;
+      border-bottom: 1px dashed var(--line);
+      font-size: 0.95rem;
+    }
+    .row:last-child { border-bottom: 0; }
+    .row .k { color: var(--muted); }
+    .row .v { font-weight: 650; }
+    .total { font-size: 1.35rem; font-weight: 800; color: var(--teal-dark); }
+    .actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 16px; }
+    .btn {
+      display: inline-block;
+      text-decoration: none;
+      border: 0;
+      border-radius: 10px;
+      padding: 12px 16px;
+      font-weight: 700;
+      font-size: 0.95rem;
+      cursor: pointer;
+      font-family: inherit;
+    }
+    .btn-pay {
+      background: #e8edf3;
+      color: #3d4a5c;
+      cursor: default;
+    }
+    .btn-explain {
+      background: var(--teal);
+      color: #fff;
+      box-shadow: 0 4px 12px rgba(15, 110, 98, 0.28);
+    }
+    .btn-explain:hover { background: var(--teal-dark); }
+    .hint { font-size: 0.8rem; color: var(--muted); margin-top: 10px; }
+    .side p { margin: 0 0 10px; color: var(--muted); font-size: 0.92rem; }
+    footer {
+      max-width: 1080px;
+      margin: 8px auto 24px;
+      padding: 0 16px;
+      color: var(--muted);
+      font-size: 0.82rem;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div>
+      <div class="brand">Your DISCOM portal (concept)</div>
+      <div class="sub">Generic bill-payment page · not an official website</div>
+    </div>
+    <div class="lang">EN | తెలుగు</div>
+  </header>
+  <div class="wrap">
+    <div class="banner">
+      <strong>Demo / Concept – not an official TGSPDCL service.</strong>
+      No official DISCOM or government logo is used. This page shows how an
+      “Explain my bill” button could sit on a utility payment site.
+    </div>
+    <h1>మీ బిల్లు / Your bill</h1>
+    <p class="lede">Sample customer, fictional account numbers only.</p>
+    <div class="grid">
+      <section class="card">
+        <h2>Latest bill</h2>
+        <div class="row"><span class="k">Name</span><span class="v">Sample Customer</span></div>
+        <div class="row"><span class="k">Service no.</span><span class="v">DEMO-0000-1234</span></div>
+        <div class="row"><span class="k">Meter no.</span><span class="v">000000154</span></div>
+        <div class="row"><span class="k">Category</span><span class="v">LT-I Domestic</span></div>
+        <div class="row"><span class="k">Units</span><span class="v">154</span></div>
+        <div class="row"><span class="k">Bill date</span><span class="v">06/11/2026</span></div>
+        <div class="row"><span class="k">Due date</span><span class="v">20-11-2026</span></div>
+        <div class="row"><span class="k">Total</span><span class="v total">₹757</span></div>
+        <div class="actions">
+          <button class="btn btn-pay" type="button" disabled>Pay bill (concept only)</button>
+          <a class="btn btn-explain" href="https://telugu-electricitybill-assistant.streamlit.app/" target="_blank" rel="noopener">
+            Explain my bill / బిల్లు వివరణ
+          </a>
+        </div>
+        <p class="hint">The Explain button opens the Telugu bill assistant. Payment is not enabled on this mockup.</p>
+      </section>
+      <aside class="card side">
+        <h2>Why this button?</h2>
+        <p>A consumer can photograph the bill and get a short Telugu explanation of each charge, a consumption check, and a next-bill range.</p>
+        <p>This is a concept for a DISCOM website or app. It needs DISCOM approval before any real rollout.</p>
+        <p>Live demo: <a href="https://telugu-electricitybill-assistant.streamlit.app/">telugu-electricitybill-assistant.streamlit.app</a></p>
+      </aside>
+    </div>
+  </div>
+  <footer>
+    Demo / Concept – not an official TGSPDCL service. Fictional sample data (Sample Customer, DEMO-0000-1234, 154 units, ₹757).
+  </footer>
+</body>
+</html>
