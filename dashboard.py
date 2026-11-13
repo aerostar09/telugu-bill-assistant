@@ -38,7 +38,7 @@ from self_checks import run_all_checks, check_jump_sum
 from terms import t, rupees_display, TARIFF_VERSION
 
 FEEDBACK_PATH = Path(__file__).resolve().parent / "data" / "feedback.json"
-WA_MAX_CHARS = 700
+WA_MAX_CHARS = 1200  # structured bill-summary + official true-up URL
 
 CSS = """
 @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+Telugu:wght@400;500;600;700&family=Noto+Sans:wght@400;500;600;700&display=swap');
@@ -101,6 +101,17 @@ div[data-testid="stDecoration"] {display: none !important;}
 .reason-row .why small { font-weight:400; color:#5b726e; }
 .reason-row .amt { font-weight: 700; white-space: nowrap; }
 .upload-panel { background:#fff; border:2px dashed #9fd4c8; border-radius:16px; padding:0.7rem 0.8rem 0.45rem; margin: 0 0 0.5rem 0; }
+.upload-panel [data-testid="stHorizontalBlock"] > div:nth-child(2) button {
+  background-color: #128C7E !important;
+  color: #ffffff !important;
+  border: 0 !important;
+}
+.upload-panel [data-testid="stHorizontalBlock"] > div:nth-child(2) button:hover {
+  background-color: #0b554c !important;
+  color: #ffffff !important;
+}
+.upload-panel [data-testid="stHorizontalBlock"] { gap: 0.5rem; }
+
 .verdict-sm { font-size: 0.95rem; padding: .4rem .7rem; }
 @media (max-width: 480px) {
   .bill-hero-amt { font-size: 2.15rem; }
@@ -259,58 +270,22 @@ def whatsapp_summary(
     late: Optional[Dict[str, Any]] = None,
     forecast: Optional[Dict[str, Any]] = None,
 ) -> str:
-    units = bill.get("units")
-    total = bill.get("bill_amount")
-    days = bill.get("days")
-    ok = (checks or {}).get("ok")
-    lines = ["మీ విద్యుత్ బిల్లు సారాంశం"]
-    bits = []
-    if units is not None:
-        bits.append(f"{_u(float(units))} యూనిట్లు")
-    if total is not None:
-        bits.append(_inr(total))
-    if days is not None:
-        bits.append(f"{_u(float(days))} రోజులు")
-    if bits:
-        lines.append("ఈ నెల: " + ", ".join(bits) + ".")
-    if ok is True:
-        lines.append("లెక్క సరిగా ఉంది.")
-    elif ok is False:
-        lines.append("లెక్కల్లో తేడా ఉంది — CSC/1912 కి చూపించండి.")
-    if jump and jump.get("difference") is not None:
-        br = jump
-        lines.append(
-            "ఎందుకు పెరిగింది: "
-            f"యూనిట్లు {_inr(br.get('extra_units_old_rate'), True)}, "
-            f"కేటగిరీ {_inr(br.get('category_change'), True)}, "
-            f"True-up {_inr(br.get('trueup_added'), True)}."
-        )
-    tu = bill.get("trueup_charges")
-    tu_u = bill.get("trueup_units")
-    if tu and tu_u:
-        rate = trueup_rate_for_bill_date(bill.get("bill_date"))
-        nxt = trueup_rate_for_next_bill(bill.get("bill_date"))
-        lines.append(
-            f"True-up FY 2022-23 {_u(float(tu_u))} × ₹{rate:.2f} = {_inr(tu)} "
-            f"(ఈ నెల వాడకం కాదు). వచ్చే నెల ₹{nxt:.2f}/యూనిట్."
-        )
-    if late and late.get("is_late"):
-        lines.append(
-            f"{late['days']} రోజుల స్లాబ్ పుష్ ≈ {_inr(late['extra_rupees'])}."
-        )
-    if forecast:
-        from forecast import consumer_forecast_range, format_rupee_range
-        rng = consumer_forecast_range(forecast=forecast)
-        if rng:
-            lines.append(
-                "వచ్చే నెల అంచనా " + format_rupee_range(rng["low"], rng["high"]) + "."
-            )
-    text = "\n".join(lines)
+    """Same text as short_share_text — the classic bill list plus short extras."""
+    from share_card import short_share_text
+    from forecast import consumer_forecast_range
+
+    rng = consumer_forecast_range(forecast=forecast)
+    text = short_share_text(
+        bill,
+        forecast=forecast,
+        forecast_range=rng,
+        late=late,
+        checks=checks,
+        include_link=True,
+    )
     if len(text) > WA_MAX_CHARS:
         text = text[: WA_MAX_CHARS - 1].rstrip() + "…"
     return text
-
-
 def whatsapp_link(text: str) -> str:
     return "https://wa.me/?text=" + quote(text, safe="")
 
@@ -690,11 +665,14 @@ def render_dashboard(model: Dict[str, Any]) -> None:
     st.markdown(dps_html, unsafe_allow_html=True)
 
     # True-up
+    from draft_features import trueup_what_is_it_html
     st.markdown("### True-up / PP TRUEUP")
     st.markdown(
         f'<div class="card" data-testid="trueup-card"><div class="formula">'
         + model["trueup_text"].replace("\n\n", "<br><br>")
-        + "</div></div>",
+        + "</div>"
+        + trueup_what_is_it_html()
+        + "</div>",
         unsafe_allow_html=True,
     )
 

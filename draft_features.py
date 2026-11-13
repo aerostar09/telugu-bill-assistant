@@ -7,6 +7,42 @@ from __future__ import annotations
 
 from typing import Any, Dict, Optional
 
+
+# Official TGERC order dated 05.10.2026: "Determination of the manner of
+# passing on the Power Purchase True-up of FY 2022-23 and the Revenue
+# True-up of FY 2023-24" (30 paise in Nov, 50 paise from Dec). Verified
+# HTTP 200, application/pdf, on tgerc.telangana.gov.in. Also listed first
+# on https://tgerc.telangana.gov.in/currentyearorders.php
+TRUEUP_OFFICIAL_URL = (
+    "https://tgerc.telangana.gov.in/file_upload/uploads/"
+    "Tariff%20Orders/Current%20Year%20Orders/2026/"
+    "Trueup%20order%20for%20FY%202022-23%20and%20FY2023-24.pdf"
+)
+TRUEUP_LINK_LABEL_TE = "ట్రూ-అప్ అంటే ఏమిటి?"
+TRUEUP_ONE_LINER_TE = (
+    "ట్రూ-అప్ అంటే 2022-23లో కరెంట్ కొనే ఖర్చు ఎక్కువైతే, "
+    "ఆ తేడాను ఇప్పుడు బిల్లులో వసూలు చేయడం — ఈ నెల వాడకం కాదు."
+)
+
+
+def trueup_what_is_it_html() -> str:
+    return (
+        f'<div class="trueup-explain" data-testid="trueup-what">'
+        f"{TRUEUP_ONE_LINER_TE} "
+        f'<a href="{TRUEUP_OFFICIAL_URL}" target="_blank" rel="noopener">'
+        f"{TRUEUP_LINK_LABEL_TE}</a></div>"
+    )
+
+
+def trueup_share_url_line() -> str:
+    return f"• {TRUEUP_LINK_LABEL_TE} {TRUEUP_OFFICIAL_URL}"
+
+
+def render_trueup_what_is_it() -> None:
+    import streamlit as st
+    st.markdown(trueup_what_is_it_html(), unsafe_allow_html=True)
+
+
 from tariff import (
     jump_breakdown,
     check_jump_breakdown,

@@ -344,7 +344,8 @@ class ShareTextPrivacyTests(unittest.TestCase):
             "16358",
         ):
             self.assertNotIn(forbidden, text)
-        self.assertIn("46 యూనిట్లు దాటితే రేటు పెరుగుతుంది", text)
+        self.assertIn("కరెంట్ బిల్లు వివరాలు", text)
+        self.assertIn("(Bill Summary)", text)
 
 
 

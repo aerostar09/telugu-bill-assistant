@@ -579,8 +579,65 @@ def _result_from_scenario(key: str, use_sarvam: bool = False) -> Dict[str, Any]:
     }
 
 
+
+def _ingest_uploaded_bill(uploaded, use_sarvam: bool):
+    """Run the same extract → explain → estimate path as the red Read button."""
+    if uploaded is None:
+        st.warning("దయచేసి ముందు బిల్లు ఫోటో అప్‌లోడ్ చేయండి.")
+        return None
+    img = Image.open(uploaded)
+    with st.spinner("బిల్లు చదువుతున్నాం..."):
+        if not nvidia_key_configured():
+            _missing_key_message()
+            return None
+        try:
+            pipe = extract_bill_pipeline_cached(img, use_cache=True)
+        except Exception as e:
+            if getattr(e, "kind", None) == "missing_key" or "NVIDIA_API_KEY missing" in str(e):
+                _missing_key_message()
+            else:
+                render_user_error(format_nvidia_user_message(e))
+            st.session_state["result"] = None
+            return None
+    bill = pipe["bill"]
+    guard = pipe.get("guard")
+    telugu, src = (None, None)
+    est = None
+    model = None
+    if not guard:
+        telugu, src = explain_bill(bill, use_sarvam=bool(use_sarvam))
+        est = estimate_next_bill_from_actual(bill)
+        prev_bill = (st.session_state.get("prev_result") or {}).get("bill")
+        model = build_dashboard_model(
+            bill, prev_bill, pipe.get("checks"),
+            extra_history=st.session_state.get("user_history_rows") or None,
+        )
+    result = {
+        "bill": bill,
+        "prev_bill": (st.session_state.get("prev_result") or {}).get("bill"),
+        "corrections": pipe.get("corrections") or [],
+        "guard": guard,
+        "checks": pipe.get("checks"),
+        "telugu": telugu,
+        "src": src,
+        "est": est,
+        "kept_attempt": pipe.get("kept_attempt"),
+        "kept_model": pipe.get("kept_model"),
+        "attempts_used": pipe.get("attempts_used"),
+        "attempts": pipe.get("attempts"),
+        "from_cache": pipe.get("from_cache"),
+        "demo": False,
+        "model": model,
+    }
+    st.session_state["result"] = result
+    return result
+
+
 def render_citizen_tab(demo: bool, use_sarvam: bool) -> None:
     uploaded = None
+    from share_card import render_inline_share, share_button_plan
+    existing = st.session_state.get("result") or {}
+    has_result = bool(existing.get("bill")) and not existing.get("guard")
     if not demo:
         st.markdown('<div class="upload-panel">', unsafe_allow_html=True)
         uploaded = st.file_uploader(
@@ -589,65 +646,64 @@ def render_citizen_tab(demo: bool, use_sarvam: bool) -> None:
             key="bill_upload",
         )
         st.caption(t("upload_hint"))
-        clicked = st.button(
-            t("upload_button"),
-            type="primary",
-            disabled=uploaded is None,
-            width='stretch',
-        )
+        c1, c2 = st.columns(2)
+        with c1:
+            clicked = st.button(
+                t("upload_button"),
+                type="primary",
+                disabled=uploaded is None,
+                width="stretch",
+                key="read_bill_btn",
+            )
+        with c2:
+            wa_clicked = st.button(
+                "WhatsApp కి పంపండి",
+                disabled=(uploaded is None and not has_result),
+                width="stretch",
+                key="wa_send_top",
+            )
         st.markdown("</div>", unsafe_allow_html=True)
-        if clicked:
-            if uploaded is None:
-                st.warning("దయచేసి ముందు బిల్లు ఫోటో అప్‌లోడ్ చేయండి.")
-                return
-            img = Image.open(uploaded)
-            with st.spinner("బిల్లు చదువుతున్నాం..."):
-                if not nvidia_key_configured():
-                    _missing_key_message()
-                    return
-                try:
-                    pipe = extract_bill_pipeline_cached(img, use_cache=True)
-                except Exception as e:
-                    if getattr(e, "kind", None) == "missing_key" or "NVIDIA_API_KEY missing" in str(e):
-                        _missing_key_message()
-                    else:
-                        render_user_error(format_nvidia_user_message(e))
-                    st.session_state["result"] = None
-                    return
-            bill = pipe["bill"]
-            guard = pipe.get("guard")
-            telugu, src = (None, None)
-            est = None
-            model = None
-            if not guard:
-                telugu, src = explain_bill(bill, use_sarvam=bool(use_sarvam))
-                est = estimate_next_bill_from_actual(bill)
-                prev_bill = (st.session_state.get("prev_result") or {}).get("bill")
-                model = build_dashboard_model(
-                    bill, prev_bill, pipe.get("checks"),
-                    extra_history=st.session_state.get("user_history_rows") or None,
-                )
-            st.session_state["result"] = {
-                "bill": bill,
-                "prev_bill": (st.session_state.get("prev_result") or {}).get("bill"),
-                "corrections": pipe.get("corrections") or [],
-                "guard": guard,
-                "checks": pipe.get("checks"),
-                "telugu": telugu,
-                "src": src,
-                "est": est,
-                "kept_attempt": pipe.get("kept_attempt"),
-                "kept_model": pipe.get("kept_model"),
-                "attempts_used": pipe.get("attempts_used"),
-                "attempts": pipe.get("attempts"),
-                "from_cache": pipe.get("from_cache"),
-                "demo": False,
-                "model": model,
-            }
+        plan = share_button_plan(
+            uploaded is not None,
+            has_result,
+            wa_clicked=bool(wa_clicked),
+            read_clicked=bool(clicked),
+        )
+        if plan == "need_photo":
+            st.warning("దయచేసి ముందు బిల్లు ఫోటో అప్‌లోడ్ చేయండి.")
+        elif plan in ("read_only", "read_then_share"):
+            result = _ingest_uploaded_bill(uploaded, use_sarvam)
+            if result is not None and not result.get("guard") and plan == "read_then_share":
+                st.session_state["share_now"] = True
+            elif result is not None and result.get("guard"):
+                st.session_state["share_now"] = False
+        elif plan == "share_only":
+            st.session_state["share_now"] = True
     else:
+        st.markdown('<div class="upload-panel">', unsafe_allow_html=True)
         st.caption("డెమో మోడ్ ఆన్ — అసలు బిల్లు ఫోటో అవసరం లేదు, NVIDIA కాల్ లేదు, PII లేదు.")
+        c1, c2 = st.columns(2)
+        with c1:
+            st.button(
+                t("upload_button"),
+                type="primary",
+                disabled=True,
+                width="stretch",
+                key="read_bill_demo",
+            )
+        with c2:
+            wa_clicked = st.button(
+                "WhatsApp కి పంపండి",
+                width="stretch",
+                key="wa_send_demo",
+            )
+        st.markdown("</div>", unsafe_allow_html=True)
+        if wa_clicked:
+            st.session_state["share_now"] = True
 
     result = st.session_state.get("result")
+    if st.session_state.get("share_now") and result and not result.get("guard"):
+        render_inline_share(result)
     if not result:
         with st.expander(t("try_sample"), expanded=False):
             st.caption("రూపాయలు tariff.py లెక్కిస్తుంది — హార్డ్‌కోడ్ కాదు. నమూనా డేటా, నిజమైన కన్స్యూమర్ కాదు.")

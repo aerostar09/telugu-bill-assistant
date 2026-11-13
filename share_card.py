@@ -110,41 +110,155 @@ def _draw_mixed(draw: ImageDraw.ImageDraw, xy, text: str, size: int, fill, *, bo
     return x
 
 
+def _rs(n) -> str:
+    return f"₹{float(n):,.2f}"
+
+
 def short_share_text(
     bill: Dict[str, Any],
     *,
     forecast_range: Optional[Dict[str, Any]] = None,
+    forecast: Optional[Dict[str, Any]] = None,
     spoken_summary: Optional[str] = None,
     include_link: bool = True,
     totals_ok: Optional[bool] = None,
+    late: Optional[Dict[str, Any]] = None,
+    checks: Optional[Dict[str, Any]] = None,
 ) -> str:
-    """Short structured Telugu + emoji. No name, USC, address, or meter numbers."""
-    pay = payable_amount(bill)
-    units = bill.get("units")
-    due = bill.get("due_date") or "—"
-    lines = []
-    if pay is not None:
-        unit_bit = f" ({int(round(float(units)))} యూనిట్లు)" if units is not None else ""
-        lines.append(f"⚡ ఈ నెల బిల్లు ₹{int(round(pay))}{unit_bit}")
-    lines.append(f"📅 చెల్లించాల్సిన తేదీ {due}")
-    if totals_ok:
-        lines.append("✅ లెక్క సరిపోయింది")
-    for r in nonzero_rows(bill)[:8]:
-        sign = "−" if r["amount"] < 0 or r["key"] == "subsidy" else ""
-        lines.append(f"• {r['name_te']} {sign}₹{abs(r['amount']):,.2f}")
+    """Classic bulleted bill summary, then short update bullets. No PII.
+
+    Used everywhere share text appears (wa.me, Web Share, inline, tab).
+    """
+    from bill_lines import AFTER_BILL_ROWS, CHARGE_ROWS, payable_amount
+    from draft_features import trueup_share_url_line
     from forecast import consumer_forecast_range, format_rupee_range
-    rng = consumer_forecast_range(forecast_range=forecast_range)
+    from tariff import trueup_rate_for_bill_date, trueup_rate_for_next_bill
+
+    def _amt(v):
+        if v is None or v == "":
+            return None
+        try:
+            return float(v)
+        except (TypeError, ValueError):
+            return None
+
+    discom = (bill.get("discom") or "TGSPDCL").strip() or "TGSPDCL"
+    lines = [
+        f"⚡ {discom} కరెంట్ బిల్లు వివరాలు",
+        "(Bill Summary)",
+    ]
+    units = _amt(bill.get("units"))
+    if units is not None:
+        lines.append(f"• వినియోగించిన యూనిట్లు (Units): {int(round(units))} kWh")
+
+    energy = _amt(bill.get("energy_charges"))
+    if energy is not None and abs(energy) >= 0.005:
+        lines.append(f"• విద్యుత్ ఛార్జీ (Energy): {_rs(energy)}")
+
+    fixed = _amt(bill.get("fixed_charges")) or 0.0
+    cust = _amt(bill.get("customer_charges")) or 0.0
+    if abs(fixed) >= 0.005 and abs(cust) >= 0.005:
+        lines.append(f"• ఫిక్స్‌డ్ + కస్టమర్ ఛార్జీ: {_rs(fixed + cust)}")
+    elif abs(fixed) >= 0.005:
+        lines.append(f"• ఫిక్స్‌డ్ ఛార్జీ: {_rs(fixed)}")
+    elif abs(cust) >= 0.005:
+        lines.append(f"• కస్టమర్ ఛార్జీ: {_rs(cust)}")
+
+    ed = _amt(bill.get("electricity_duty"))
+    if ed is not None and abs(ed) >= 0.005:
+        lines.append(f"• ఎలక్ట్రిసిటీ డ్యూటీ (ED): {_rs(ed)}")
+
+    tu = _amt(bill.get("trueup_charges"))
+    if tu is not None and abs(tu) >= 0.005:
+        lines.append(f"• ట్రూ-అప్ ఛార్జీ (True-Up): {_rs(tu)}")
+
+    # Other nonzero official lines (DPS, arrears, FSA, subsidy…). Skip tiny Loss/Gain.
+    listed = {
+        "energy_charges",
+        "fixed_charges",
+        "customer_charges",
+        "electricity_duty",
+        "trueup_charges",
+        "loss_gain",
+    }
+    labels = {k: name for k, name, _ in CHARGE_ROWS + AFTER_BILL_ROWS}
+    labels["surcharge"] = "ఆలస్య రుసుము (DPS)"
+    for key, name, _ in CHARGE_ROWS + AFTER_BILL_ROWS:
+        if key in listed:
+            continue
+        amt = _amt(bill.get(key))
+        if amt is None or abs(amt) < 0.005:
+            continue
+        sign = "−" if amt < 0 or key == "subsidy" else ""
+        lines.append(f"• {labels.get(key, name)}: {sign}{_rs(abs(amt))}")
+
+    pay = payable_amount(bill)
+    if pay is not None:
+        lines.append(f"⚡ మొత్తం చెల్లించాల్సిన బిల్లు (Total Due): {_rs(pay)}")
+
+    ok = totals_ok
+    if ok is None and checks:
+        ok = checks.get("consumer_ok")
+        if ok is None:
+            ok = checks.get("ok")
+    if ok is True:
+        lines.append("✅ లెక్క సరిగా ఉంది")
+    elif ok is False:
+        lines.append("లెక్కల్లో తేడా ఉంది — CSC/1912 కి చూపించండి")
+
+    tu_u = _amt(bill.get("trueup_units"))
+    if tu is not None and abs(tu) >= 0.005:
+        rate = float(trueup_rate_for_bill_date(bill.get("bill_date")))
+        nxt = float(trueup_rate_for_next_bill(bill.get("bill_date")))
+        paise = int(round(rate * 100))
+        nxt_paise = int(round(nxt * 100))
+        if tu_u and tu_u > 0:
+            lines.append(
+                f"• ట్రూ-అప్: FY 2022-23 {int(tu_u)} యూనిట్లు × {paise} పైసలు = {_rs(tu)} "
+                f"(ఈ నెల వాడకం కాదు). వచ్చే నెల {nxt_paise} పైసలు/యూనిట్."
+            )
+        else:
+            lines.append(
+                f"• ట్రూ-అప్ {_rs(tu)} (ఈ నెల వాడకం కాదు). వచ్చే నెల {nxt_paise} పైసలు/యూనిట్."
+            )
+        lines.append(trueup_share_url_line())
+
+    info = late
+    if not (info and info.get("is_late")):
+        try:
+            from late_reading import late_reading_effect
+            info = late_reading_effect(bill)
+        except Exception:
+            info = None
+    if info and info.get("is_late"):
+        days = info.get("days")
+        extra = info.get("extra_rupees")
+        day_bit = f"{int(days)} రోజుల" if days is not None else "ఆలస్య"
+        if extra is not None:
+            lines.append(f"• {day_bit} స్లాబ్ — అదనం ≈ {_rs(extra)}")
+        else:
+            lines.append(f"• {day_bit} స్లాబ్ రీడింగ్")
+
+    due = bill.get("due_date")
+    disc = bill.get("disc_date")
+    date_bits = []
+    if due:
+        date_bits.append(f"గడువు {due}")
+    if disc:
+        date_bits.append(f"Disc Date {disc}")
+    if date_bits:
+        lines.append("• " + " · ".join(date_bits))
+
+    rng = consumer_forecast_range(forecast=forecast, forecast_range=forecast_range)
     if rng:
         band = format_rupee_range(rng["low"], rng["high"])
         if band:
-            lines.append(f"📈 వచ్చే నెల అంచనా {band}")
-    cliff = next_units_cliff(bill.get("units"))
-    if cliff and cliff.get("headroom"):
-        lines.append(f"💡 {cliff['message_te']}")
+            lines.append(f"• వచ్చే నెల అంచనా {band}")
+
     if include_link:
         lines.append(f"🔗 {APP_URL}")
-    text = "\n".join(l for l in lines if l)
-    return text
+
+    return "\n".join(l for l in lines if l)
 
 
 def whatsapp_share_url(text: str) -> str:
@@ -249,6 +363,7 @@ def render_share_controls(
     *,
     spoken_summary: Optional[str] = None,
     forecast_range: Optional[Dict[str, Any]] = None,
+    key_prefix: str = "",
 ) -> None:
     import streamlit as st
     bill = model["bill"]
@@ -263,8 +378,11 @@ def render_share_controls(
     text = short_share_text(
         bill,
         forecast_range=forecast_range,
+        forecast=model.get("forecast"),
         spoken_summary=spoken_summary,
         totals_ok=bool(totals_ok),
+        late=model.get("late"),
+        checks=checks,
     )
     png = make_share_png(bill, forecast_range=forecast_range)
     c1, c2 = st.columns(2)
@@ -274,7 +392,7 @@ def render_share_controls(
             data=png,
             file_name="telugu-bill-summary.png",
             mime="image/png",
-            key="share_png_dl",
+            key=f"{key_prefix}share_png_dl",
             width="stretch",
         )
     with c2:
@@ -389,15 +507,22 @@ def render_share_tab(result: Optional[Dict[str, Any]] = None, *, on_try_demo=Non
         totals_ok = checks.get("ok")
     reasons = top_reasons(model.get("jump"), model.get("late"), bill)
     spoken = build_voice_summary(bill, reasons=reasons, forecast_range=rng)
-    text = short_share_text(bill, forecast_range=rng, totals_ok=bool(totals_ok))
+    text = short_share_text(
+        bill,
+        forecast_range=rng,
+        forecast=model.get("forecast"),
+        totals_ok=bool(totals_ok),
+        late=model.get("late"),
+        checks=checks,
+    )
     png = make_share_png(bill, forecast_range=rng)
 
     try:
         st.image(png, width="stretch")
     except TypeError:
         st.image(png, use_container_width=True)
-    render_web_share_button(png, text)
-    render_share_controls(model, spoken_summary=spoken, forecast_range=rng)
+    render_web_share_button(png, text, key="tab_webshare")
+    render_share_controls(model, spoken_summary=spoken, forecast_range=rng, key_prefix="tab_")
     if spoken:
         st.markdown("##### వినండి / Listen in Telugu")
         render_voice_note(spoken)
@@ -413,3 +538,60 @@ def render_share_tab(result: Optional[Dict[str, Any]] = None, *, on_try_demo=Non
     st.markdown("".join(parts), unsafe_allow_html=True)
     st.caption("కాన్సెప్ట్: TGSPDCL WhatsApp 87124 41912 లోకి ప్లగ్ చేయవచ్చు.")
     st.caption("చిత్రంలో పేరు, చిరునామా, సర్వీస్ నంబర్, మీటర్ రీడింగ్ లేవు.")
+
+def share_button_plan(
+    has_photo: bool,
+    has_result: bool,
+    *,
+    wa_clicked: bool,
+    read_clicked: bool,
+) -> str:
+    """Decide what the top read / WhatsApp buttons should do this click.
+
+    idle | need_photo | read_only | share_only | read_then_share
+    """
+    if wa_clicked and not has_photo and not has_result:
+        return "need_photo"
+    if wa_clicked and has_result and not read_clicked:
+        return "share_only"
+    if wa_clicked and has_photo:
+        return "read_then_share"
+    if read_clicked and has_photo:
+        return "read_only"
+    if read_clicked and not has_photo:
+        return "need_photo"
+    return "idle"
+
+
+def render_inline_share(result: Dict[str, Any]) -> None:
+    """Share actions shown immediately under the top WhatsApp button."""
+    import streamlit as st
+    from forecast import consumer_forecast_range
+
+    if not result or result.get("guard") or not result.get("bill"):
+        return
+    model = result.get("model") or {"bill": result["bill"], "checks": result.get("checks")}
+    bill = model.get("bill") or result.get("bill")
+    rng = consumer_forecast_range(forecast=model.get("forecast"))
+    checks = model.get("checks") or result.get("checks") or {}
+    totals_ok = checks.get("consumer_ok")
+    if totals_ok is None:
+        totals_ok = checks.get("ok")
+    text = short_share_text(
+        bill,
+        forecast_range=rng,
+        forecast=model.get("forecast"),
+        totals_ok=bool(totals_ok),
+        late=model.get("late"),
+        checks=checks,
+    )
+    png = make_share_png(bill, forecast_range=rng)
+    st.markdown("##### WhatsApp కి పంపండి")
+    try:
+        st.image(png, width="stretch")
+    except TypeError:
+        st.image(png, use_container_width=True)
+    render_web_share_button(png, text, key="inline_webshare")
+    render_share_controls(model, forecast_range=rng, key_prefix="inline_")
+    st.caption("కాన్సెప్ట్: TGSPDCL WhatsApp 87124 41912 లోకి ప్లగ్ చేయవచ్చు.")
+

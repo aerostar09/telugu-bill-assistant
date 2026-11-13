@@ -2,7 +2,7 @@
 import unittest
 
 from demo_data import lakshmi_demo_bundle
-from whatif import whatif_for_units
+from whatif import whatif_for_units, same_units_delta_note
 from terms import TARIFF_VERSION
 
 
@@ -27,3 +27,22 @@ class WhatIfTests(unittest.TestCase):
         mid = whatif_for_units(bill, 120)
         self.assertGreater(high["total"], mid["total"])
         self.assertEqual(high["quote"]["trueup_charges"], mid["quote"]["trueup_charges"])
+
+
+class SameUnitsDeltaNoteTests(unittest.TestCase):
+    def test_next_trueup_note_when_units_match(self):
+        bill = lakshmi_demo_bundle()["bill"]
+        w = whatif_for_units(bill, 154)
+        note = same_units_delta_note(bill, w)
+        self.assertIsNotNone(note)
+        self.assertIn("వచ్చే నెల ట్రూ-అప్ 50 పైసలు", note)
+        self.assertIn("ఎక్కువ", note)
+
+    def test_no_note_when_units_differ(self):
+        bill = lakshmi_demo_bundle()["bill"]
+        w = whatif_for_units(bill, 100)
+        self.assertIsNone(same_units_delta_note(bill, w))
+
+
+if __name__ == "__main__":
+    unittest.main()

@@ -250,7 +250,7 @@ def render_comparison_section(model: Dict[str, Any]) -> None:
 
 def render_whatif_slider(bill: Dict[str, Any], *, key: str = "whatif_units") -> None:
     import streamlit as st
-    from whatif import whatif_for_units
+    from whatif import whatif_for_units, same_units_delta_note
     st.markdown("##### యూనిట్లు మారిస్తే బిల్లు ఎంతవుతుంది?")
     st.caption(t("simulation_note"))
     current = bill.get("units")
@@ -273,6 +273,9 @@ def render_whatif_slider(bill: Dict[str, Any], *, key: str = "whatif_units") -> 
     c1.metric("అంచనా మొత్తం", f"₹{w['total']:,.0f}")
     if w["difference"] is not None:
         c2.metric("ఈ నెలతో తేడా", f"₹{w['difference']:+,.0f}")
+    note = same_units_delta_note(bill, w)
+    if note:
+        st.caption(note)
     st.caption(f"{w['label_te']} · టారిఫ్ {w['tariff_version']} · కేటగిరీ {w['category']}")
 
 
@@ -358,6 +361,8 @@ def render_calculation_section(
     if model.get("trueup_text"):
         st.markdown("##### ట్రూ-అప్")
         st.write(model["trueup_text"])
+        from draft_features import render_trueup_what_is_it
+        render_trueup_what_is_it()
     with st.expander("సెల్ఫ్-చెక్ JSON / extracted fields", expanded=False):
         st.json(model.get("checks") or {})
         display_keys = [
@@ -433,14 +438,6 @@ def render_suggestions_section(model: Dict[str, Any]) -> None:
             f'<div class="card" data-testid="acd-card"><div class="formula">{model["acd_text"]}</div></div>',
             unsafe_allow_html=True,
         )
-    wa = whatsapp_link(model["wa_text"])
-    st.markdown(
-        f'<a href="{wa}" target="_blank" rel="noopener" data-testid="whatsapp-link" '
-        f'style="display:inline-block;background:#128C7E;color:#fff;padding:.55rem 1rem;'
-        f'border-radius:10px;text-decoration:none;font-weight:600;">WhatsApp కి పంపండి</a>',
-        unsafe_allow_html=True,
-    )
-    st.caption("మీరే కాంటాక్ట్ ఎంచుకుని Send నొక్కాలి. టెక్స్ట్ మాత్రమే.")
     st.markdown("**ఇది ఉపయోగపడిందా?**")
     fb = load_feedback()
     b1, b2 = st.columns(2)

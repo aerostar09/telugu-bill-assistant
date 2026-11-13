@@ -96,6 +96,9 @@ def render_receipt_card(bill: Dict[str, Any], formulas: Optional[Dict[str, str]]
     parts = ['<div class="receipt" data-testid="receipt-card">']
     for r in rows:
         formula = (formulas or {}).get(r["key"]) or formula_for(r["key"], bill)
+        if r["key"] == "trueup_charges":
+            from draft_features import trueup_what_is_it_html
+            formula = f"{formula}<br>{trueup_what_is_it_html()}"
         sign = "−" if r["amount"] < 0 or r["key"] == "subsidy" else ""
         amt = f"{sign}₹{abs(r['amount']):,.2f}"
         parts.append(
