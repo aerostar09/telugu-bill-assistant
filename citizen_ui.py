@@ -98,6 +98,14 @@ def render_main_understand(
     render_match_banner(model)
     from forecast import consumer_forecast_range, format_rupee_range
     render_receipt_card(model["bill"])
+    tu = (model.get("bill") or {}).get("trueup_charges")
+    try:
+        tu_n = float(tu) if tu is not None else 0.0
+    except (TypeError, ValueError):
+        tu_n = 0.0
+    if abs(tu_n) >= 0.005:
+        from draft_features import render_trueup_what_is_it
+        render_trueup_what_is_it()
     render_units_bar(model["bill"])
     rng = consumer_forecast_range(forecast=model.get("forecast"))
     if rng:
