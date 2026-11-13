@@ -6,57 +6,84 @@
   <title>Your DISCOM portal (concept) – Explain my bill</title>
   <style>
     :root {
-      --ink: #12203a;
-      --muted: #5b6b80;
-      --line: #d7dee8;
-      --bg: #f3f6fa;
+      --ink: #10221f;
+      --muted: #5b726e;
+      --line: #d7e4e0;
+      --bg: #eef5f3;
       --card: #ffffff;
       --teal: #0f6e62;
       --teal-dark: #0b554c;
+      --teal-soft: #e7f6f3;
       --amber: #fff6d9;
       --amber-line: #e8c56b;
+      --ink-dim: #3d4a5c;
+      --shadow: 0 10px 30px rgba(16, 34, 31, 0.08);
     }
     * { box-sizing: border-box; }
     body {
       margin: 0;
       font-family: "Noto Sans Telugu", "Hind Guntur", "Liberation Sans", "DejaVu Sans", sans-serif;
-      background: var(--bg);
+      background:
+        radial-gradient(1200px 420px at 10% -10%, #d7efe9 0%, transparent 55%),
+        var(--bg);
       color: var(--ink);
       line-height: 1.45;
     }
     header {
-      background: var(--teal);
+      background: linear-gradient(180deg, var(--teal) 0%, var(--teal-dark) 100%);
       color: #fff;
-      padding: 14px 20px;
+      padding: 16px 20px;
       display: flex;
       justify-content: space-between;
       align-items: center;
       gap: 12px;
     }
-    header .brand { font-weight: 700; font-size: 1.05rem; }
+    .brand-row { display: flex; align-items: center; gap: 12px; }
+    .mark {
+      width: 36px; height: 36px; border-radius: 10px;
+      background: rgba(255,255,255,.16);
+      display: grid; place-items: center;
+      font-size: 1.15rem;
+    }
+    header .brand { font-weight: 700; font-size: 1.05rem; letter-spacing: .01em; }
     header .sub { font-size: 0.78rem; opacity: 0.9; font-weight: 400; }
-    header .lang { font-size: 0.8rem; opacity: 0.9; }
-    .wrap { max-width: 1080px; margin: 0 auto; padding: 16px; }
+    header .lang {
+      font-size: 0.78rem; opacity: 0.95;
+      border: 1px solid rgba(255,255,255,.35);
+      border-radius: 999px; padding: 5px 10px;
+    }
+    .wrap { max-width: 1080px; margin: 0 auto; padding: 18px 16px 8px; }
     .banner {
       background: var(--amber);
       border: 1px solid var(--amber-line);
       color: #5c4a12;
-      border-radius: 12px;
+      border-radius: 14px;
       padding: 12px 14px;
       font-size: 0.92rem;
-      margin-bottom: 16px;
+      margin-bottom: 18px;
     }
-    h1 { font-size: 1.25rem; margin: 0 0 6px; }
+    h1 { font-size: 1.35rem; margin: 0 0 6px; }
     .lede { color: var(--muted); margin: 0 0 16px; }
-    .grid { display: grid; grid-template-columns: 1.2fr 0.8fr; gap: 16px; }
+    .grid { display: grid; grid-template-columns: 1.25fr 0.75fr; gap: 16px; }
     @media (max-width: 720px) { .grid { grid-template-columns: 1fr; } }
     .card {
       background: var(--card);
       border: 1px solid var(--line);
-      border-radius: 16px;
-      padding: 18px;
+      border-radius: 20px;
+      padding: 20px;
+      box-shadow: var(--shadow);
     }
-    .card h2 { font-size: 1rem; margin: 0 0 12px; }
+    .card h2 { font-size: 1rem; margin: 0 0 14px; }
+    .chip-row { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 14px; }
+    .chip {
+      background: var(--teal-soft);
+      color: var(--teal-dark);
+      border-radius: 999px;
+      padding: 4px 10px;
+      font-size: 0.8rem;
+      font-weight: 650;
+    }
+    .chip.due { background: #fff4e5; color: #93370d; }
     .row {
       display: flex;
       justify-content: space-between;
@@ -68,35 +95,47 @@
     .row:last-child { border-bottom: 0; }
     .row .k { color: var(--muted); }
     .row .v { font-weight: 650; }
-    .total { font-size: 1.35rem; font-weight: 800; color: var(--teal-dark); }
-    .actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 16px; }
+    .row.soft .k, .row.soft .v { font-weight: 500; color: var(--muted); font-size: 0.9rem; }
+    .total-row {
+      display: flex; justify-content: space-between; align-items: baseline;
+      margin-top: 8px; padding-top: 10px;
+      border-top: 2px solid var(--ink);
+    }
+    .total { font-size: 1.55rem; font-weight: 800; color: var(--teal-dark); }
+    .actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 16px; align-items: center; }
     .btn {
       display: inline-block;
       text-decoration: none;
       border: 0;
-      border-radius: 10px;
-      padding: 12px 16px;
+      border-radius: 12px;
+      padding: 13px 16px;
       font-weight: 700;
       font-size: 0.95rem;
       cursor: pointer;
       font-family: inherit;
     }
-    .btn-pay {
-      background: #e8edf3;
-      color: #3d4a5c;
-      cursor: default;
-    }
+    .btn-pay { background: #e8edf3; color: #3d4a5c; cursor: default; }
     .btn-explain {
       background: var(--teal);
       color: #fff;
-      box-shadow: 0 4px 12px rgba(15, 110, 98, 0.28);
+      box-shadow: 0 6px 16px rgba(15, 110, 98, 0.28);
     }
     .btn-explain:hover { background: var(--teal-dark); }
     .hint { font-size: 0.8rem; color: var(--muted); margin-top: 10px; }
     .side p { margin: 0 0 10px; color: var(--muted); font-size: 0.92rem; }
+    .qr-box {
+      display: flex; gap: 12px; align-items: center;
+      background: var(--teal-soft);
+      border-radius: 14px;
+      padding: 12px;
+      margin-top: 14px;
+    }
+    .qr-box img { width: 88px; height: 88px; background: #fff; border-radius: 8px; }
+    .qr-box strong { display: block; color: var(--ink); margin-bottom: 2px; }
+    .qr-box span { font-size: 0.8rem; color: var(--muted); }
     footer {
       max-width: 1080px;
-      margin: 8px auto 24px;
+      margin: 8px auto 28px;
       padding: 0 16px;
       color: var(--muted);
       font-size: 0.82rem;
@@ -105,9 +144,12 @@
 </head>
 <body>
   <header>
-    <div>
-      <div class="brand">Your DISCOM portal (concept)</div>
-      <div class="sub">Generic bill-payment page · not an official website</div>
+    <div class="brand-row">
+      <div class="mark" aria-hidden="true">⚡</div>
+      <div>
+        <div class="brand">Your DISCOM portal (concept)</div>
+        <div class="sub">Generic bill-payment page · not an official website</div>
+      </div>
     </div>
     <div class="lang">EN | తెలుగు</div>
   </header>
@@ -122,14 +164,20 @@
     <div class="grid">
       <section class="card">
         <h2>Latest bill</h2>
-        <div class="row"><span class="k">Name</span><span class="v">Sample Customer</span></div>
-        <div class="row"><span class="k">Service no.</span><span class="v">DEMO-0000-1234</span></div>
-        <div class="row"><span class="k">Meter no.</span><span class="v">000000154</span></div>
-        <div class="row"><span class="k">Category</span><span class="v">LT-I Domestic</span></div>
-        <div class="row"><span class="k">Units</span><span class="v">154</span></div>
-        <div class="row"><span class="k">Bill date</span><span class="v">06/11/2026</span></div>
-        <div class="row"><span class="k">Due date</span><span class="v">20-11-2026</span></div>
-        <div class="row"><span class="k">Total</span><span class="v total">₹757</span></div>
+        <div class="chip-row">
+          <span class="chip">LT-I Domestic · 1B(i)</span>
+          <span class="chip">154 units</span>
+          <span class="chip due">Due 20-11-2026</span>
+        </div>
+        <div class="row soft"><span class="k">Name</span><span class="v">Sample Customer</span></div>
+        <div class="row soft"><span class="k">Service no.</span><span class="v">DEMO-0000-1234</span></div>
+        <div class="row"><span class="k">Energy Charges</span><span class="v">₹599.20</span></div>
+        <div class="row"><span class="k">Fixed Charges</span><span class="v">₹30.00</span></div>
+        <div class="row"><span class="k">Customer Charges</span><span class="v">₹90.00</span></div>
+        <div class="row"><span class="k">Electricity Duty</span><span class="v">₹9.24</span></div>
+        <div class="row"><span class="k">PP TRUEUP</span><span class="v">₹28.80</span></div>
+        <div class="row"><span class="k">Loss/Gain</span><span class="v">−₹0.24</span></div>
+        <div class="total-row"><span>Total Due</span><span class="total">₹757</span></div>
         <div class="actions">
           <button class="btn btn-pay" type="button" disabled>Pay bill (concept only)</button>
           <a class="btn btn-explain" href="https://telugu-electricitybill-assistant.streamlit.app/" target="_blank" rel="noopener">
@@ -142,7 +190,13 @@
         <h2>Why this button?</h2>
         <p>A consumer can photograph the bill and get a short Telugu explanation of each charge, a consumption check, and a next-bill range.</p>
         <p>This is a concept for a DISCOM website or app. It needs DISCOM approval before any real rollout.</p>
-        <p>Live demo: <a href="https://telugu-electricitybill-assistant.streamlit.app/">telugu-electricitybill-assistant.streamlit.app</a></p>
+        <div class="qr-box">
+          <img src="qr_app.png" alt="QR code for the Telugu bill assistant">
+          <div>
+            <strong>స్కాన్ చేసి యాప్ తెరవండి</strong>
+            <span>telugu-electricitybill-assistant.streamlit.app</span>
+          </div>
+        </div>
       </aside>
     </div>
   </div>

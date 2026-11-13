@@ -27,6 +27,7 @@ from PIL import Image
 
 from self_checks import (
     IMPROVED_VISION_PROMPT,
+    SCHEMA_BLOCK,
     run_self_checks,
     estimate_next_bill_from_actual,
     image_guard,
@@ -70,48 +71,6 @@ from dashboard import build_dashboard_model, render_dashboard, CSS
 # -----------------------------------------------------------------------------
 NIM_URL = "https://integrate.api.nvidia.com/v1/chat/completions"
 MAX_SIDE = 1600
-
-SCHEMA_BLOCK = """
-Return ONLY a single JSON object (no markdown fences) with exactly these keys.
-Use null for any field that is not clearly readable — do NOT guess or invent.
-{
-  "discom": string|null,
-  "usc_no": string|null,
-  "category": string|null,
-  "contracted_load_kw": number|null,
-  "phase": string|null,
-  "bill_date": string|null,
-  "prev_reading": number|null,
-  "present_reading": number|null,
-  "units": number|null,
-  "days": number|null,
-  "energy_charges": number|null,
-  "fixed_charges": number|null,
-  "customer_charges": number|null,
-  "electricity_duty": number|null,
-  "interest_on_ed": number|null,
-  "surcharge": number|null,
-  "trueup_charges": number|null,
-  "trueup_units": number|null,
-  "fsa_fca": number|null,
-  "subsidy": number|null,
-  "adjustment": number|null,
-  "loss_gain": number|null,
-  "bill_amount": number|null,
-  "arrears": number|null,
-  "total_due": number|null,
-  "due_date": string|null,
-  "present_reading_date": string|null,
-  "prev_reading_date": string|null,
-  "average_month_units": number|null,
-  "acd_due": number|null,
-  "acd_surcharge": number|null,
-  "unit_history": [{"year": number, "month": number, "units": number, "estimated": boolean}]|null,
-  "is_electricity_bill": boolean,
-  "image_quality": "clear"|"cropped"|"crumpled"|"blurry"|"unknown"
-}
-Ignore handwritten notes scribbled on the form.
-""".strip()
 
 VISION_PROMPT = IMPROVED_VISION_PROMPT + "\n\n" + SCHEMA_BLOCK
 
@@ -195,68 +154,9 @@ def _inr(n: Optional[float]) -> str:
 
 
 def generate_telugu_explanation_template(b: Dict[str, Any]) -> str:
-    units = b.get("units")
-    days = b.get("days")
-    prev_r = b.get("prev_reading")
-    pres_r = b.get("present_reading")
-    energy = b.get("energy_charges")
-    fixed = b.get("fixed_charges")
-    cust = b.get("customer_charges")
-    duty = b.get("electricity_duty")
-    trueup = b.get("trueup_charges")
-    trueup_u = b.get("trueup_units")
-    fsa = b.get("fsa_fca") or 0
-    total = b.get("bill_amount")
-    due = b.get("due_date") or "కనిపించలేదు"
-    # Do not echo the consumer / USC number (PII) in the spoken explanation.
-    usc = "దాచబడింది" if b.get("usc_no") else "కనిపించలేదు"
-
-    lines = []
-    if units is not None:
-        day_bit = f" ({days} రోజులలో)" if days else ""
-        meter_bit = ""
-        if prev_r is not None and pres_r is not None:
-            meter_bit = f" మీటర్ {int(prev_r)} నుండి {int(pres_r)}కు పెరిగింది."
-        lines.append(f"ఈ నెల బిల్లులో{day_bit} {units:g} యూనిట్లు వాడారు.{meter_bit}")
-    else:
-        lines.append("యూనిట్ల సంఖ్య బిల్లు ఫోటోలో స్పష్టంగా కనిపించలేదు.")
-
-    lines.append(
-        f"కరెంట్ ఛార్జీ {_inr(energy)}. ఫిక్స్‌డ్ ఛార్జీ {_inr(fixed)}. "
-        f"కస్టమర్ ఛార్జీ (నెలవారీ సర్వీస్ ఫీ) {_inr(cust)}. "
-        f"ఎలక్ట్రిసిటీ డ్యూటీ (ప్రభుత్వానికి పన్ను) {_inr(duty)}."
-    )
-    if fsa and float(fsa) > 0:
-        lines.append(f"ఇంధన ధర సర్దుబాటు (FSA/FCA) {_inr(float(fsa))}.")
-
-    if trueup is not None and float(trueup) > 0:
-        u_bit = f" ({trueup_u:g} యూనిట్లు)" if trueup_u is not None else ""
-        lines.append(
-            f"PP TRUEUP / True-up{u_bit}: {_inr(float(trueup))} — "
-            "ఇది 2022-23 లో DISCOM కి ఎక్కువైన పవర్ కాస్ట్, ఇప్పుడు కొంచెం కొంచెం వసూలు చేస్తున్నారు."
-        )
-
-    lines.append(
-        f"సర్వీస్ నంబర్ {usc}. చెల్లించవలసిన మొత్తం {_inr(total)}. చివరి తేదీ {due}."
-    )
-
-    if units is not None and float(units) > 200:
-        lines.append(
-            "చిన్న చిట్కా: గృహ జ్యోతి ఉచిత 200 యూనిట్లు కేవలం అర్హులైన లబ్ధిదారులకు. "
-            "200 దాటితే అర్హులైనా మొత్తం బిల్లు వస్తుంది (మిగిలిన యూనిట్లు మాత్రమే కాదు). "
-            "ఏసీని 24°C–26°C వద్ద ఉంచండి."
-        )
-    elif units is not None and float(units) > 100:
-        lines.append(
-            "చిన్న చిట్కా: గృహ జ్యోతి అర్హులైతే 200 యూనిట్లు దాటవద్దు — "
-            "దాటితే మొత్తం బిల్లు వసూలు అవుతుంది. అర్హత లేనివారు 200 లోపు ఉన్నా సాధారణ టారిఫ్ చెల్లిస్తారు. "
-            "టీవీ/సెట్-టాప్ మెయిన్ స్విచ్ ఆఫ్ చేయండి."
-        )
-    else:
-        lines.append(
-            "చిన్న చిట్కా: మీ వాడకం అదుపులో ఉంది. LED బల్బులు / BLDC ఫ్యాన్లు కొనసాగించండి."
-        )
-    return "\n\n".join(lines)
+    """Short structured Telugu. Never include name, USC, address, or meter readings."""
+    from share_card import short_share_text
+    return short_share_text(b, include_link=False)
 
 
 # -----------------------------------------------------------------------------
@@ -696,10 +596,6 @@ def render_citizen_tab(demo: bool, use_sarvam: bool) -> None:
             width='stretch',
         )
         st.markdown("</div>", unsafe_allow_html=True)
-        if uploaded is not None:
-            with st.expander("ఫోటో ప్రివ్యూ దాచబడింది / preview hidden (PII)", expanded=False):
-                st.caption("పేరు, ఫోన్, చిరునామా స్క్రీన్‌పై చూపించం.")
-                st.write(f"File: {uploaded.name}")
         if clicked:
             if uploaded is None:
                 st.warning("దయచేసి ముందు బిల్లు ఫోటో అప్‌లోడ్ చేయండి.")
@@ -751,18 +647,17 @@ def render_citizen_tab(demo: bool, use_sarvam: bool) -> None:
     else:
         st.caption("డెమో మోడ్ ఆన్ — అసలు బిల్లు ఫోటో అవసరం లేదు, NVIDIA కాల్ లేదు, PII లేదు.")
 
-    with st.expander(t("try_sample"), expanded=False):
-        st.caption("రూపాయలు tariff.py లెక్కిస్తుంది — హార్డ్‌కోడ్ కాదు. నమూనా డేటా, నిజమైన కన్స్యూమర్ కాదు.")
-        c1, c2, c3 = st.columns(3)
-        for col, key in ((c1, "A"), (c2, "B"), (c3, "C")):
-            sc = get_scenario(key)
-            if col.button(sc["title_te"], key=f"citizen_sc_{key}"):
-                st.session_state["result"] = _result_from_scenario(key, use_sarvam)
-                st.session_state["prev_result"] = None
-                st.rerun()
-
     result = st.session_state.get("result")
     if not result:
+        with st.expander(t("try_sample"), expanded=False):
+            st.caption("రూపాయలు tariff.py లెక్కిస్తుంది — హార్డ్‌కోడ్ కాదు. నమూనా డేటా, నిజమైన కన్స్యూమర్ కాదు.")
+            c1, c2, c3 = st.columns(3)
+            for col, key in ((c1, "A"), (c2, "B"), (c3, "C")):
+                sc = get_scenario(key)
+                if col.button(sc["title_te"], key=f"citizen_sc_{key}"):
+                    st.session_state["result"] = _result_from_scenario(key, use_sarvam)
+                    st.session_state["prev_result"] = None
+                    st.rerun()
         if not demo and uploaded is None:
             st.info("స్పష్టమైన బిల్లు ఫోటో అప్‌లోడ్ చేయండి, ఒక నమూనా నొక్కండి, లేదా సైడ్‌బార్‌లో డెమో మోడ్ ఆన్ చేయండి.")
         return
@@ -845,6 +740,20 @@ def render_citizen_tab(demo: bool, use_sarvam: bool) -> None:
     with tab_s:
         render_suggestions_section(model)
 
+    # Keep photo preview and sample bills out of the way of the receipt.
+    if uploaded is not None:
+        with st.expander("ఫోటో ప్రివ్యూ దాచబడింది / preview hidden (PII)", expanded=False):
+            st.caption("పేరు, ఫోన్, చిరునామా స్క్రీన్‌పై చూపించం.")
+            st.write(f"File: {uploaded.name}")
+    with st.expander(t("try_sample"), expanded=False):
+        st.caption("రూపాయలు tariff.py లెక్కిస్తుంది — హార్డ్‌కోడ్ కాదు. నమూనా డేటా, నిజమైన కన్స్యూమర్ కాదు.")
+        c1, c2, c3 = st.columns(3)
+        for col, key in ((c1, "A"), (c2, "B"), (c3, "C")):
+            sc = get_scenario(key)
+            if col.button(sc["title_te"], key=f"citizen_sc_footer_{key}"):
+                st.session_state["result"] = _result_from_scenario(key, use_sarvam)
+                st.session_state["prev_result"] = None
+                st.rerun()
 
 
 def main() -> None:

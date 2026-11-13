@@ -1,0 +1,6 @@
+Noto Sans Telugu (Regular and Bold) is licensed under the SIL Open Font License 1.1.
+https://scripts.sil.org/OFL
+
+DejaVu Sans (Regular and Bold) is based on Bitstream Vera, with later changes
+in the public domain / free license. See https://dejavu-fonts.github.io/
+These fonts are bundled so Telugu and Latin text render correctly on Streamlit Cloud.

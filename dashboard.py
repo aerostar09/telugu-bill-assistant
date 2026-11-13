@@ -110,6 +110,23 @@ div[data-testid="stDecoration"] {display: none !important;}
 .jump-row:last-child { border-bottom: 0; font-weight: 700; }
 .privacy { font-size: 0.8rem; color: #5b726e; background: #f4f7f6; border-radius: 10px; padding: .7rem .9rem; margin-top: 1rem; }
 
+
+.receipt{border:1px solid #e5eeec;border-radius:14px;padding:4px 14px 6px;background:#fff;margin:0 0 1rem 0;}
+.rc-row summary{display:flex;justify-content:space-between;align-items:flex-start;padding:10px 0;border-bottom:1px dashed #e5eeec;cursor:pointer;list-style:none;gap:12px;}
+.rc-row summary::-webkit-details-marker{display:none;}
+.rc-row small{color:#5b726e;font-weight:400;}
+.rc-amt{font-weight:700;white-space:nowrap;color:#10221f;}
+.rc-formula{font-size:13px;color:#4b635f;padding:6px 0 10px;line-height:1.45;}
+.rc-total{display:flex;justify-content:space-between;align-items:baseline;font-size:1.25rem;font-weight:800;color:#0f3d38;padding:12px 0 8px;}
+.units-bar{margin:0 0 1rem 0;}
+.units-bar-label{font-weight:600;color:#10221f;margin-bottom:6px;}
+.units-bar .track{height:10px;background:#eef2f1;border-radius:999px;overflow:hidden;}
+.units-bar .fill{height:100%;border-radius:999px;}
+.units-bar .fill-green{background:#12b76a;}
+.units-bar .fill-yellow{background:#f79009;}
+.units-bar .fill-red{background:#d92d20;}
+.units-bar-msg{font-size:0.9rem;color:#4b635f;margin-top:6px;}
+.forecast-one{font-size:1rem;color:#0f3d38;background:#f0fdfa;border:1px solid #c5ebe3;border-radius:12px;padding:.7rem 1rem;margin:0 0 1rem;}
 div[data-testid="stMetricValue"] { font-family: "Noto Sans", "Noto Sans Telugu", sans-serif !important; }
 """
 

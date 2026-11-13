@@ -27,8 +27,8 @@ _JUMP_REASONS = (
     ),
     (
         "trueup_added",
-        "ట్రూ-అప్",
-        "ట్రూ-అప్ (పాత పవర్ ఖర్చు) ఈ బిల్లులో చేరింది.",
+        "ట్రూ-అప్ (పాత సంవత్సరం సర్దుబాటు)",
+        "ట్రూ-అప్ (పాత సంవత్సరం సర్దుబాటు) ఈ బిల్లులో చేరింది.",
         "ట్రూ-అప్ ఈ బిల్లులో తగ్గింది.",
     ),
     (
@@ -83,16 +83,42 @@ def top_reasons(
                 "amount": round(extra, 2),
                 "voice_te": f"మీటర్ రీడింగ్ {day_bit}కు జరిగి స్లాబ్ పుష్ అయ్యింది.",
             })
-    # Genuine printed DPS, only when present and nonzero
+    # Current-bill true-up (even when there is no previous bill / jump).
+    # Skip if the jump already contributed the same rupees.
     if bill is not None:
+        tu = _amt(bill.get("trueup_charges"))
+        if tu is not None and abs(tu) >= _MIN_REASON_RS:
+            already = any(c["key"] == "trueup_added" for c in cands)
+            if not already:
+                cands.append({
+                    "key": "trueup_charges",
+                    "title_te": "ట్రూ-అప్ (పాత సంవత్సరం సర్దుబాటు)",
+                    "amount": round(tu, 2),
+                    "voice_te": "ట్రూ-అప్ (పాత సంవత్సరం సర్దుబాటు) ఈ బిల్లులో ఉంది.",
+                })
+            else:
+                # Rename the jump reason to the clearer label.
+                for c in cands:
+                    if c["key"] == "trueup_added":
+                        c["title_te"] = "ట్రూ-అప్ (పాత సంవత్సరం సర్దుబాటు)"
+        # Genuine DPS only when it is present, nonzero, and distinct from true-up.
         sur = _amt(bill.get("surcharge"))
         if sur is not None and abs(sur) >= _MIN_REASON_RS:
-            cands.append({
-                "key": "surcharge",
-                "title_te": "ఆలస్య రుసుము",
-                "amount": round(sur, 2),
-                "voice_te": "ఆలస్య చెల్లింపు రుసుము ఈ బిల్లులో ఉంది.",
-            })
+            same_as_trueup = tu is not None and abs(abs(sur) - abs(tu)) <= 0.05
+            # A 30p/50p multiple that is not a typical ₹10/₹25 DPS is a misfiled true-up.
+            looks_tu = False
+            try:
+                from thermal_repair import looks_like_trueup
+                looks_tu = looks_like_trueup(sur, bill.get("trueup_units"))
+            except Exception:
+                looks_tu = False
+            if not same_as_trueup and not looks_tu:
+                cands.append({
+                    "key": "surcharge",
+                    "title_te": "ఆలస్య రుసుము",
+                    "amount": round(sur, 2),
+                    "voice_te": "ఆలస్య చెల్లింపు రుసుము ఈ బిల్లులో ఉంది.",
+                })
     cands.sort(key=lambda r: abs(r["amount"]), reverse=True)
     return cands[:max_n]
 
@@ -104,13 +130,15 @@ def confidence_level(
 ) -> Dict[str, str]:
     """green / yellow / red pill for the hero card."""
     checks = checks or {}
-    ok = checks.get("ok")
+    ok = checks.get("consumer_ok")
+    if ok is None:
+        ok = checks.get("ok")
     dirty = bool(corrections)
     q = (image_quality or "").lower()
     messy_photo = q in {"cropped", "crumpled", "blurry"}
     if ok is False:
         return {"level": "red", "label_te": "లెక్కల్లో తేడా ఉంది", "css": "badge-red"}
-    if ok and (dirty or messy_photo):
+    if ok and (dirty or messy_photo or checks.get("ok") is False):
         return {"level": "yellow", "label_te": "కొన్ని అంకెలు సరిచేశాం", "css": "badge-yellow"}
     if ok:
         return {"level": "green", "label_te": "స్పష్టంగా చదివాం", "css": "badge-green"}

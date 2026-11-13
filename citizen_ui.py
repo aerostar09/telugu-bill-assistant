@@ -14,6 +14,8 @@ from citizen_summary import (
 )
 from forecast import forecast_display_range
 from terms import t, rupees_display, TARIFF_VERSION
+from bill_lines import payable_amount
+from receipt_ui import render_receipt_card, render_units_bar, next_units_cliff
 
 def render_hero_card(model: Dict[str, Any], corrections: Optional[List[str]] = None) -> None:
     import streamlit as st
@@ -22,10 +24,11 @@ def render_hero_card(model: Dict[str, Any], corrections: Optional[List[str]] = N
     units = bill.get("units")
     due = bill.get("due_date") or "—"
     unit_bit = f"{int(units)} {t('units')}" if units is not None else ""
+    payable = payable_amount(bill)
     st.markdown(
         f'<div class="bill-hero" data-testid="bill-hero">'
         f'<div class="bill-hero-label">{t("this_month_bill")}</div>'
-        f'<div class="bill-hero-amt">{rupees_display(bill.get("bill_amount"))}</div>'
+        f'<div class="bill-hero-amt">{rupees_display(payable)}</div>'
         f'<div class="bill-hero-meta">'
         f"<span>{unit_bit}</span>"
         f'<span>{t("due_date")} {due}</span>'
@@ -38,7 +41,7 @@ def render_hero_card(model: Dict[str, Any], corrections: Optional[List[str]] = N
 def render_match_banner(model: Dict[str, Any]) -> None:
     import streamlit as st
     checks = model.get("checks") or {}
-    if checks.get("ok"):
+    if checks.get("consumer_ok") if checks.get("consumer_ok") is not None else checks.get("ok"):
         st.markdown(
             f'<div class="verdict verdict-ok verdict-sm" data-testid="trust-verdict">{t("calc_matches")}</div>',
             unsafe_allow_html=True,
@@ -86,14 +89,25 @@ def render_main_understand(
 
     render_hero_card(model, corrections)
     render_match_banner(model)
-    reasons = render_top_reasons(model, max_n=3)
+    render_receipt_card(model["bill"])
+    render_units_bar(model["bill"])
     rng = forecast_display_range(model.get("forecast"))
+    if rng:
+        st.markdown(
+            f'<div class="forecast-one" data-testid="forecast-one">'
+            f'వచ్చే నెల అంచనా <b>₹{rng["low"]}–₹{rng["high"]}</b>'
+            f' (ఇదే వాడకం ఉంటే)</div>',
+            unsafe_allow_html=True,
+        )
+    reasons = render_top_reasons(model, max_n=3)
     spoken = voice_text or build_voice_summary(
         model["bill"], reasons=reasons, forecast_range=rng
     )
     if spoken:
         st.markdown(f"##### {t('voice')}")
         render_voice_note(spoken)
+    from share_card import render_share_controls
+    render_share_controls(model, spoken_summary=spoken, forecast_range=rng)
 
 
 def render_jump_card(model: Dict[str, Any]) -> None:

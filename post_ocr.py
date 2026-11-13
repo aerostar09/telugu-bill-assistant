@@ -42,7 +42,7 @@ def _is_typical_surcharge(v: Optional[float]) -> bool:
 SUM_KEYS = (
     "energy_charges", "fixed_charges", "customer_charges", "electricity_duty",
     "interest_on_ed", "surcharge", "trueup_charges", "fsa_fca", "adjustment",
-    "loss_gain",
+    "interest_on_cd", "loss_gain",
 )
 # Prefer to keep these if a duplicate must be dropped.
 KEEP_PRIORITY = {
@@ -218,7 +218,12 @@ def apply_post_ocr_corrections(bill: Dict[str, Any]) -> Tuple[Dict[str, Any], Li
     if t is not None and t == 0:
         t = None
         # leave 0 in place until we maybe replace it
-    expected = round(n * 0.30, 2) if n is not None else None
+    try:
+        from tariff import trueup_rate_for_bill_date
+        tu_rate = float(trueup_rate_for_bill_date(b.get("bill_date")))
+    except Exception:
+        tu_rate = 0.30
+    expected = round(n * tu_rate, 2) if n is not None else None
 
     # Never keep a ₹10/₹25 surcharge-type value as true-up if it doesn't match N×0.30
     if t is not None and _is_typical_surcharge(t) and not _close(t, expected):
@@ -252,15 +257,19 @@ def apply_post_ocr_corrections(bill: Dict[str, Any]) -> Tuple[Dict[str, Any], Li
             for key, val in candidates:
                 if val is None or val <= 0 or _is_typical_surcharge(val):
                     continue
-                q = val / 0.30
-                if abs(q - round(q)) <= 0.05:
-                    qi = int(round(q))
-                    if 1 <= qi <= PLAUSIBLE_UNITS_MAX:
-                        found_key, found_val = key, val
-                        n = float(qi)
-                        expected = round(n * 0.30, 2)
-                        b["trueup_units"] = qi
-                        break
+                for rate in (0.30, 0.50):
+                    q = val / rate
+                    if abs(q - round(q)) <= 0.05:
+                        qi = int(round(q))
+                        if 1 <= qi <= PLAUSIBLE_UNITS_MAX:
+                            found_key, found_val = key, val
+                            n = float(qi)
+                            expected = round(n * rate, 2)
+                            tu_rate = rate
+                            b["trueup_units"] = qi
+                            break
+                if found_key is not None:
+                    break
 
         if found_key is not None and found_val is not None:
             old_t = t
@@ -280,7 +289,7 @@ def apply_post_ocr_corrections(bill: Dict[str, Any]) -> Tuple[Dict[str, Any], Li
             t = found_val
             notes.append(
                 f"auto-correct chesam: true-up ₹{found_val:.2f} was in {found_key}; "
-                f"moved to PP TRUEUP ({n:g} × 0.30 = ₹{expected:.2f})"
+                f"moved to PP TRUEUP ({n:g} × {tu_rate:.2f} = ₹{expected:.2f})"
                 f" / true-up {found_key} నుండి PP TRUEUP కి మార్చాం"
             )
 
@@ -297,6 +306,17 @@ def apply_post_ocr_corrections(bill: Dict[str, Any]) -> Tuple[Dict[str, Any], Li
             " / ప్రెజెంట్ < ప్రివియస్ కాబట్టి రీడింగ్స్ కూర్చాం"
         )
 
+    extracted_units = _num(b.get("units"))
+
+    # ------------------------------------------------------------------
+    # 2b. Thermal layout: days-as-units + energy-guided reading repair
+    # ------------------------------------------------------------------
+    from thermal_repair import repair_days_units_swap, repair_readings_from_energy
+    raw_days = _num(b.get("days"))
+    b = repair_days_units_swap(b, notes, raw_days=raw_days)
+    b = repair_readings_from_energy(b, notes)
+    prev = _num(b.get("prev_reading"))
+    pres = _num(b.get("present_reading"))
     extracted_units = _num(b.get("units"))
 
     # ------------------------------------------------------------------
@@ -375,12 +395,26 @@ def apply_post_ocr_corrections(bill: Dict[str, Any]) -> Tuple[Dict[str, Any], Li
                 f" / యూనిట్లు రీడింగ్ తేడా నుండి పెట్టాం"
             )
         elif not _close(units, reading_delta, 0.05):
-            b["units"] = rd
-            notes.append(
-                f"auto-correct chesam: extracted units {units:g} disagreed with readings "
-                f"({_fmt(pres)} − {_fmt(prev)} = {rd}); preferred the reading difference"
-                f" / యూనిట్లు రీడింగ్ తేడాతో సరిపోలలేదు, తేడానే తీసుకున్నాం"
-            )
+            # Prefer the reading delta only when it explains the energy charges
+            # (or the current units do not). A compressed thermal photo can
+            # yield a plausible but wrong delta that must not overwrite
+            # energy-consistent units (e.g. Days=154, energy ₹599.20).
+            from thermal_repair import energy_matches
+            energy = _num(b.get("energy_charges"))
+            cat = b.get("category")
+            if energy_matches(reading_delta, energy, cat) or not energy_matches(units, energy, cat):
+                b["units"] = rd
+                notes.append(
+                    f"auto-correct chesam: extracted units {units:g} disagreed with readings "
+                    f"({_fmt(pres)} − {_fmt(prev)} = {rd}); preferred the reading difference"
+                    f" / యూనిట్లు రీడింగ్ తేడాతో సరిపోలలేదు, తేడానే తీసుకున్నాం"
+                )
+            else:
+                notes.append(
+                    f"auto-correct chesam: kept units {units:g} because energy charges match "
+                    f"it, not the reading difference {rd:g}"
+                    f" / రీడింగ్ తేడా కాదు, ఎనర్జీకి సరిపోయే యూనిట్లు ఉంచాం"
+                )
 
     # ------------------------------------------------------------------
     # 5. Old layout: payable = Net Amount / Total Due (rounded)
@@ -457,6 +491,29 @@ def apply_post_ocr_corrections(bill: Dict[str, Any]) -> Tuple[Dict[str, Any], Li
         )
 
     # ------------------------------------------------------------------
+    # 6b. Thermal column-shift + arrears snap (needs final units)
+    # ------------------------------------------------------------------
+    from thermal_repair import repair_thermal_label_shift, snap_arrears
+    b = repair_thermal_label_shift(b, notes)
+    b = snap_arrears(b, notes)
+    # Snap a 5–10 paise true-up OCR slip to N × official rate when N is known.
+    n = _num(b.get("trueup_units"))
+    t = _num(b.get("trueup_charges"))
+    if n and t is not None and n > 0:
+        try:
+            from tariff import trueup_rate_for_bill_date
+            rate = float(trueup_rate_for_bill_date(b.get("bill_date")))
+        except Exception:
+            rate = 0.30
+        expected = round(n * rate, 2)
+        if 0.005 < abs(t - expected) <= 0.10:
+            b["trueup_charges"] = expected
+            notes.append(
+                f"auto-correct chesam: true-up ₹{t:.2f} snapped to ₹{expected:.2f} "
+                f"({n:g} × {rate:.2f}) / ట్రూ-అప్ పైసలు సరిచేసాం"
+            )
+
+    # ------------------------------------------------------------------
     # 7. Reconcile line-item sum vs printed bill (duplicates, optional zeros,
     #    Loss/Gain rounding). Must run after other field moves.
     # ------------------------------------------------------------------
@@ -471,3 +528,8 @@ def _fmt(v: Optional[float]) -> str:
     if float(v) == int(v):
         return str(int(v))
     return f"{v:g}"
+
+
+def payable_amount(bill: Dict[str, Any]) -> Optional[float]:
+    from bill_lines import payable_amount as _payable
+    return _payable(bill)

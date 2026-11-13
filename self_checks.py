@@ -11,14 +11,27 @@ Rules:
 - Convert currency/units to numbers (strip ₹, Rs., commas).
 - If a field is not visible or unreadable, set it to null. Do NOT guess.
 - Read each printed charge line independently. Never copy one line's amount onto a different line.
-- trueup_charges = ONLY the PP TRUEUP / True-up / FY 2022-23 line; trueup_units = units printed on that same line (e.g. 96 × 30P = 28.80).
-- surcharge = ONLY the separate Surcharge / Delayed Payment Surcharge / DPS line. If that line is 0.00, surcharge is 0. Do NOT copy the PP TRUEUP amount into surcharge.
+- The standard TGSPDCL 'LT-ELECTRICITY BILL-CUM NOTICE' thermal slip prints charge lines in this EXACT order. Read each line independently. Never copy one line's amount onto a different line, and never skip a 0.00 line by sliding the next amount up.
+  1) Energy Charges
+  2) Fixed Charges
+  3) Customer Charges
+  4) Electricity Duty
+  5) Interest on ED
+  6) Surcharge  (Delayed Payment Surcharge / DPS only. If the line is 0.00, surcharge is 0. Do NOT copy PP TRUEUP into surcharge.)
+  7) PP TRUEUP Charges  (FY-2022-23 units × paise, e.g. 96 × 30P = 28.80). trueup_charges = that amount; trueup_units = the units on that same line.
+  8) FSA/FCA Charges
+  9) Subsidy
+  10) Adjustment
+  11) Interest on CD
+  12) Loss/Gain  (include a negative sign, e.g. -0.24)
+  13) Bill Amount
+  Then: Arrears as on, Arrears after, ACD Due, Total Due, Due Date, Disc Date, Last Paid Dt.
+- Header: Cat, Contracted Load, Present/Previous readings + their dates, Units, Days, Recorded MD.
 - present_reading_date / prev_reading_date = Date column on the Present / Previous reading rows (not the bill date).
-- unit_history = the 12–13 month consumption table or chart if printed (year, month, units, estimated=true if billed on average). null if not visible — do NOT invent months.
+- unit_history = the 12–13 month consumption table or chart if printed. null if not visible — do NOT invent months.
 - average_month_units = 'Average Month Units' if printed.
 - acd_due / acd_surcharge = ACD Due or ACD Surcharge line if printed (0 is valid).
-- loss_gain = the Loss/Gain (rounding) line as printed, including a negative sign (e.g. -0.24).
-- fsa_fca = Fuel Surcharge / FCA only (not DPS, not true-up).
+- payable = Total Due when arrears > 0; otherwise Bill Amount.
 - is_electricity_bill=false if this is not a TG electricity bill photo.
 - image_quality one of: clear, cropped, crumpled, blurry, unknown.
 """.strip()
@@ -39,16 +52,67 @@ JSON:
 """.strip()
 
 # Fields the demo must extract (nullable). Use with google-genai response_schema.
+SCHEMA_BLOCK = """
+Return ONLY a single JSON object (no markdown fences) with exactly these keys.
+Use null for any field that is not clearly readable — do NOT guess or invent.
+{
+  "discom": string|null,
+  "category": string|null,
+  "contracted_load_kw": number|null,
+  "phase": string|null,
+  "bill_date": string|null,
+  "prev_reading": number|null,
+  "present_reading": number|null,
+  "prev_reading_date": string|null,
+  "present_reading_date": string|null,
+  "units": number|null,
+  "days": number|null,
+  "recorded_md": number|null,
+  "energy_charges": number|null,
+  "fixed_charges": number|null,
+  "customer_charges": number|null,
+  "electricity_duty": number|null,
+  "interest_on_ed": number|null,
+  "surcharge": number|null,
+  "trueup_charges": number|null,
+  "trueup_units": number|null,
+  "fsa_fca": number|null,
+  "subsidy": number|null,
+  "adjustment": number|null,
+  "interest_on_cd": number|null,
+  "loss_gain": number|null,
+  "bill_amount": number|null,
+  "arrears_as_on": number|null,
+  "arrears_after": number|null,
+  "arrears": number|null,
+  "acd_due": number|null,
+  "acd_surcharge": number|null,
+  "total_due": number|null,
+  "due_date": string|null,
+  "disc_date": string|null,
+  "last_paid_date": string|null,
+  "average_month_units": number|null,
+  "unit_history": [{"year": number, "month": number, "units": number, "estimated": boolean}]|null,
+  "usc_no": string|null,
+  "is_electricity_bill": boolean,
+  "image_quality": "clear"|"cropped"|"crumpled"|"blurry"|"unknown"
+}
+Ignore handwritten notes scribbled on the form.
+""".strip()
+
+
 BILL_SCHEMA_KEYS = [
-    "discom", "usc_no", "category", "contracted_load_kw", "phase", "bill_date",
-    "prev_reading", "present_reading", "units", "days",
+    "discom", "category", "contracted_load_kw", "phase", "bill_date",
+    "prev_reading", "present_reading", "prev_reading_date", "present_reading_date",
+    "units", "days", "recorded_md",
     "energy_charges", "fixed_charges", "customer_charges", "electricity_duty",
     "interest_on_ed", "surcharge", "trueup_charges", "trueup_units",
-    "fsa_fca", "subsidy", "adjustment", "loss_gain",
-    "bill_amount", "arrears", "total_due", "due_date",
-    "present_reading_date", "prev_reading_date", "average_month_units",
-    "acd_due", "acd_surcharge", "unit_history",
-    "is_electricity_bill", "image_quality",
+    "fsa_fca", "subsidy", "adjustment", "interest_on_cd", "loss_gain",
+    "bill_amount", "arrears_as_on", "arrears_after", "arrears",
+    "acd_due", "acd_surcharge", "total_due",
+    "due_date", "disc_date", "last_paid_date",
+    "average_month_units", "unit_history",
+    "usc_no", "is_electricity_bill", "image_quality",
 ]
 
 
@@ -72,13 +136,15 @@ def run_self_checks(b: Dict[str, Any]) -> Dict[str, Any]:
 
     failures = [v for v in (units_eq_delta, sum_eq_bill, trueup_eq_30p) if v is False]
     ok = len(failures) == 0
+    consumer_ok = sum_eq_bill is True
     return {
         "units_eq_delta": units_eq_delta,
         "sum_calc": sum_calc if b.get("bill_amount") is not None else None,
         "sum_eq_bill": sum_eq_bill,
         "trueup_eq_30p": trueup_eq_30p,
         "ok": ok,
-        "message_te": None if ok else "మీ బిల్లు లో ఒక్క నంబర్ మ్యాచ్ అవ్వట్లేదు, CSC/1912 కి కాల్ చేయండి.",
+        "consumer_ok": consumer_ok,
+        "message_te": None if consumer_ok else "మీ బిల్లు లో ఒక్క నంబర్ మ్యాచ్ అవ్వట్లేదు, CSC/1912 కి కాల్ చేయండి.",
     }
 
 
@@ -165,8 +231,13 @@ def run_all_checks(b: Dict[str, Any]) -> Dict[str, Any]:
     out["ok"] = ok
     out["fail_keys"] = fail_keys
     out["failure_count"] = len(fail_keys)
+    # Consumer-facing match: the printed total is explained within ₹1 after
+    # reconciliation. Diagnostic fails (true-up paise, label-shift, reading
+    # typo) may still drive a retry, but must not show the 1912 banner.
+    consumer_ok = sc.get("sum_eq_bill") is True
+    out["consumer_ok"] = consumer_ok
     out["message_te"] = (
-        None if ok else "మీ బిల్లు లో ఒక్క నంబర్ మ్యాచ్ అవ్వట్లేదు, CSC/1912 కి కాల్ చేయండి."
+        None if consumer_ok else "మీ బిల్లు లో ఒక్క నంబర్ మ్యాచ్ అవ్వట్లేదు, CSC/1912 కి కాల్ చేయండి."
     )
     return out
 

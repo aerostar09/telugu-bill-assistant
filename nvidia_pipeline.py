@@ -15,7 +15,7 @@ from typing import Any, Dict, Optional, Tuple
 import requests
 from PIL import Image
 
-from self_checks import IMPROVED_VISION_PROMPT, run_all_checks, image_guard
+from self_checks import IMPROVED_VISION_PROMPT, SCHEMA_BLOCK, run_all_checks, image_guard
 from post_ocr import apply_post_ocr_corrections
 
 # Reuse prompt + parse helpers from the app/harness style
@@ -37,48 +37,6 @@ TEMPERATURE = 0
 TOP_P = 0.1
 MAX_CALLS = 2
 ENABLE_THINKING = False
-
-SCHEMA_BLOCK = """
-Return ONLY a single JSON object (no markdown fences) with exactly these keys.
-Use null for any field that is not clearly readable — do NOT guess or invent.
-{
-  "discom": string|null,
-  "usc_no": string|null,
-  "category": string|null,
-  "contracted_load_kw": number|null,
-  "phase": string|null,
-  "bill_date": string|null,
-  "prev_reading": number|null,
-  "present_reading": number|null,
-  "units": number|null,
-  "days": number|null,
-  "energy_charges": number|null,
-  "fixed_charges": number|null,
-  "customer_charges": number|null,
-  "electricity_duty": number|null,
-  "interest_on_ed": number|null,
-  "surcharge": number|null,
-  "trueup_charges": number|null,
-  "trueup_units": number|null,
-  "fsa_fca": number|null,
-  "subsidy": number|null,
-  "adjustment": number|null,
-  "loss_gain": number|null,
-  "bill_amount": number|null,
-  "arrears": number|null,
-  "total_due": number|null,
-  "due_date": string|null,
-  "present_reading_date": string|null,
-  "prev_reading_date": string|null,
-  "average_month_units": number|null,
-  "acd_due": number|null,
-  "acd_surcharge": number|null,
-  "unit_history": [{"year": number, "month": number, "units": number, "estimated": boolean}]|null,
-  "is_electricity_bill": boolean,
-  "image_quality": "clear"|"cropped"|"crumpled"|"blurry"|"unknown"
-}
-Ignore handwritten notes scribbled on the form.
-""".strip()
 
 VISION_PROMPT = IMPROVED_VISION_PROMPT + "\n\n" + SCHEMA_BLOCK
 
@@ -571,7 +529,14 @@ def extract_bill_pipeline_cached(img: Image.Image, use_cache: bool = True) -> Di
     jpeg = downscale_jpeg_image(img)
     if use_cache:
         hit = load_cached_extract(jpeg)
-        if hit:
+        if hit and hit.get("bill"):
+            # Re-run current post-OCR + checks so a stale cache cannot show a
+            # pre-reconcile 1912 banner or a true-up mislabeled as DPS.
+            ev = _evaluate(hit["bill"])
+            hit["bill"] = ev["bill"]
+            hit["checks"] = ev["checks"]
+            hit["corrections"] = ev.get("corrections") or hit.get("corrections") or []
+            hit["guard"] = ev.get("guard")
             hit["from_cache"] = True
             _log_nvidia("cache_hit", sha16=_cache_key(jpeg)[:16])
             return hit
