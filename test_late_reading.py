@@ -44,11 +44,22 @@ class TestDaysFromDates(unittest.TestCase):
         self.assertEqual(r["days"], 30)
         self.assertEqual(r["source"], "reading_dates")
 
-    def test_disagree_prefers_dates(self):
+    def test_disagree_keeps_plausible_printed_days(self):
+        # Printed 30 is a normal cycle (25–35); do not overwrite from dates.
         r = resolve_billing_days({
             "prev_reading_date": "01/10/26",
             "present_reading_date": "03/11/26",
-            "days": 30,  # printed wrong; dates say 33
+            "days": 30,
+        })
+        self.assertEqual(r["days"], 30)
+        self.assertEqual(r["source"], "printed")
+        self.assertEqual(r["computed_days"], 33)
+
+    def test_disagree_uses_dates_when_printed_implausible(self):
+        r = resolve_billing_days({
+            "prev_reading_date": "01/10/26",
+            "present_reading_date": "03/11/26",
+            "days": 92,
         })
         self.assertEqual(r["days"], 33)
         self.assertEqual(r["source"], "reading_dates")

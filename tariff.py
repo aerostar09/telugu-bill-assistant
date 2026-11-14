@@ -55,9 +55,36 @@ def _num(v: Any) -> Optional[float]:
         return None
 
 
+def category_label_is_specific(category: Optional[str]) -> bool:
+    """True if the string names a 1A / 1B slab, not a title or bare 'Domestic'."""
+    if not category:
+        return False
+    s = str(category).lower()
+    compact = s.replace(" ", "").replace("_", "")
+    if any(tok in compact for tok in (
+        "bill-cum", "billcum", "lt-electricity", "ltelectricity",
+        "electricitybill",
+    )) or "electricity bill" in s:
+        return False
+    return re.search(r"1\s*a|1\s*b", s) is not None
+
+
+def normalize_extracted_category(
+    category: Optional[str] = None, units: Optional[float] = None
+) -> str:
+    """Return a canonical 1A / 1B(i) / 1B(ii) slab.
+
+    Junk labels (document title, bare 'DOMESTIC', '3A DOMESTIC') are ignored
+    and the slab is inferred from billed units when those are present.
+    """
+    if category_label_is_specific(category):
+        return infer_category(units, category)
+    return infer_category(units, None)
+
+
 def infer_category(units: Optional[float] = None, category: Optional[str] = None) -> str:
     """Return one of '1A', '1B(i)', '1B(ii)'."""
-    if category:
+    if category and category_label_is_specific(category):
         s = str(category).lower().replace(" ", "")
         s = s.replace("lt-i", "").replace("lt1", "").replace("domestic", "")
         if "1b(ii)" in s or "1b(2)" in s or "1b2" in s or "1bii" in s:

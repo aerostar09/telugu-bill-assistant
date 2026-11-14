@@ -2,11 +2,13 @@
 
 Days
 ----
-Preferred source: present_reading_date − prev_reading_date (calendar days).
-If a printed Days value is also present and differs by at most 1 (common
-off-by-one, e.g. jay6 09/Sep/23→09/Oct/23 computed 30, printed 29), keep
-the printed value. If they differ by more than 1, prefer the date-computed
-value and flag it. If dates are missing, use the printed Days field.
+Preferred source for a *missing or implausible* printed Days value:
+present_reading_date − prev_reading_date (calendar days).
+A printed Days value in the normal 25–35 cycle window is kept even when
+the dates disagree (a misread month can invent a 60–90 day span).
+If printed and dates differ by at most 1 (common off-by-one, e.g. jay6
+09/Sep/23→09/Oct/23 computed 30, printed 29), keep the printed value.
+If dates are missing, use the printed Days field even outside 25–35.
 
 Late-reading extra rupees (slab push)
 -------------------------------------
@@ -30,10 +32,13 @@ days>30 slab push' is the ₹4.67 prorated-threshold gap.
 
 Due-date safety
 ---------------
-A due date is accepted only if it falls on or after the bill date
-(or present reading date if the bill date is missing) and within
-45 days of that anchor. Dates that look like arrears cut-offs
-(e.g. 01-04-2026 on a November bill) are rejected (set to null).
+A due date is kept if it is safe against *any* available anchor
+(bill date or present reading date): on or after that anchor and
+within 45 days. A misread bill date (for example a December date
+on a November slip, or the 31-03 arrears cut-off) must not drop a
+due date that is valid against the present reading date. Dates that
+are unsafe against every available anchor (e.g. 01-04-2026 on a
+November bill) are rejected (set to null).
 """
 from __future__ import annotations
 
@@ -44,6 +49,17 @@ from tariff import energy_charges, infer_category, parse_bill_date, _num
 
 DUE_DATE_MAX_DAYS_AFTER = 45
 DAYS_PRINT_TOL = 1  # keep printed if |computed − printed| <= 1
+# Normal TG monthly cycle. Printed values in this window win over dates.
+PLAUSIBLE_PRINTED_DAYS_MIN = 25
+PLAUSIBLE_PRINTED_DAYS_MAX = 35
+
+
+def plausible_cycle_days(days: Any) -> bool:
+    """True for a normal TG monthly cycle printed on the bill (25–35 days)."""
+    n = _num(days)
+    if n is None:
+        return False
+    return PLAUSIBLE_PRINTED_DAYS_MIN <= float(n) <= PLAUSIBLE_PRINTED_DAYS_MAX
 
 
 def days_from_reading_dates(prev_date: Any, present_date: Any) -> Optional[int]:
@@ -76,6 +92,12 @@ def resolve_billing_days(bill: Dict[str, Any]) -> Dict[str, Any]:
                 note = (
                     f"printed days {printed} vs dates {computed} (off-by-one); kept printed"
                 )
+        elif plausible_cycle_days(printed):
+            days, source = printed, "printed"
+            note = (
+                f"printed days {printed} disagreed with reading dates ({computed}); "
+                f"kept printed (plausible cycle)"
+            )
         else:
             days, source = computed, "reading_dates"
             note = (
@@ -122,19 +144,39 @@ def due_date_is_safe(
 
 
 def apply_due_date_safety(bill: Dict[str, Any]) -> Tuple[Dict[str, Any], Optional[str]]:
-    """Return a shallow copy with an unsafe due_date cleared."""
+    """Return a shallow copy with an unsafe due_date cleared.
+
+    The due date is kept if it is valid against any one anchor (bill date
+    *or* present reading date). A later, inconsistent bill date must not
+    veto a due date that is safe against the reading date.
+    """
     b = dict(bill)
-    ok, reason, _ = due_date_is_safe(
-        b.get("due_date"),
-        b.get("bill_date"),
-        b.get("present_reading_date"),
-    )
-    if ok:
+    due = b.get("due_date")
+    if due in (None, ""):
         return b, None
-    old = b.get("due_date")
+    anchors = []
+    if b.get("bill_date"):
+        anchors.append(b.get("bill_date"))
+    if b.get("present_reading_date"):
+        anchors.append(b.get("present_reading_date"))
+    if not anchors:
+        ok, reason, _ = due_date_is_safe(due, None, None)
+        if ok:
+            return b, None
+        b["due_date"] = None
+        b["due_date_rejected"] = due
+        return b, f"due-date safety: rejected {due} ({reason})"
+    reasons = []
+    for anc in anchors:
+        ok, reason, _ = due_date_is_safe(due, anc, None)
+        if ok:
+            return b, None
+        if reason:
+            reasons.append(reason)
     b["due_date"] = None
-    b["due_date_rejected"] = old
-    return b, f"due-date safety: rejected {old} ({reason})"
+    b["due_date_rejected"] = due
+    why = reasons[0] if reasons else "unsafe"
+    return b, f"due-date safety: rejected {due} ({why})"
 
 
 def late_reading_effect(bill: Dict[str, Any]) -> Optional[Dict[str, Any]]:

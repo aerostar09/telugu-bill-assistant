@@ -86,6 +86,20 @@ def looks_like_trueup(val: Optional[float], units: Optional[float] = None,
     return False
 
 
+def _single_digit_variants(value: int) -> List[int]:
+    """Same length, one digit changed (any position). Keeps leading zeros out."""
+    s = str(int(abs(value)))
+    out: List[int] = []
+    for i, ch in enumerate(s):
+        for d in "0123456789":
+            if d == ch:
+                continue
+            if i == 0 and d == "0" and len(s) > 1:
+                continue
+            out.append(int(s[:i] + d + s[i + 1:]))
+    return out
+
+
 def repair_days_units_swap(bill: Dict[str, Any], notes: List[str],
                            raw_days: Optional[float] = None) -> Dict[str, Any]:
     """If the model wrote consumption units into the Days field, swap them back."""
@@ -153,11 +167,34 @@ def repair_readings_from_energy(bill: Dict[str, Any], notes: List[str]) -> Dict[
                 d = new_pres - new_prev
                 if 0 < d <= PLAUSIBLE_UNITS_MAX and energy_matches(d, energy, cat):
                     target_units.append(("both", new_prev + 10_000_000 * new_pres, d))  # pack
+        # Mid-digit typo on a single reading (e.g. 12088 → 12008).
+        for new_prev in _single_digit_variants(int(prev)):
+            d = int(pres) - new_prev
+            if 0 < d <= PLAUSIBLE_UNITS_MAX and energy_matches(d, energy, cat):
+                target_units.append(("prev_reading", new_prev, d))
+        for new_pres in _single_digit_variants(int(pres)):
+            d = new_pres - int(prev)
+            if 0 < d <= PLAUSIBLE_UNITS_MAX and energy_matches(d, energy, cat):
+                target_units.append(("present_reading", new_pres, d))
     # Unique unit target
     unique_d = {t[2] for t in target_units}
     if len(unique_d) != 1:
         return b
     d = unique_d.pop()
+    # If readings already agree with extracted units, only rewrite them when
+    # the printed energy is clearly not a small slip of that pair. A 1-unit
+    # typo search must not flip 44500→44501 just because energy is ₹8 off
+    # (one unit at the 1B(ii) rate is about ₹9).
+    ENERGY_TYPO_MIN_RESIDUAL = 5.0
+    if units is not None and delta > 0 and _close(units, delta, 0.05):
+        from tariff import energy_charges as _e
+        expected_e = _e(units, cat)
+        if expected_e is not None:
+            residual = abs(float(expected_e) - float(energy))
+            e1 = _e(float(units) + 1, cat)
+            step = abs(float(e1) - float(expected_e)) if e1 is not None else ENERGY_TYPO_MIN_RESIDUAL
+            if residual <= max(ENERGY_TYPO_MIN_RESIDUAL, 2.0 * step + 0.05):
+                return b
     # Prefer a two-field fix if present, else a single-field fix
     both = [t for t in target_units if t[0] == "both"]
     if both:
@@ -174,13 +211,16 @@ def repair_readings_from_energy(bill: Dict[str, Any], notes: List[str]) -> Dict[
             f" / రీడింగ్ అంకెలు సరిచేసాం"
         )
         return b
-    field, new_val, d = target_units[0]
+    # Prefer a present-reading typo over a previous-reading typo when both
+    # yield the same unique unit target.
+    present_fixes = [x for x in target_units if x[0] == "present_reading"]
+    field, new_val, d = (present_fixes or target_units)[0]
     old = b[field]
     b[field] = new_val
     b["units"] = d
     notes.append(
-        f"auto-correct chesam: leading digit on {field} {old:g} → {new_val} "
-        f"so units={d} matches energy charges / {field} మొదటి అంకె సరిచేసాం"
+        f"auto-correct chesam: digit typo on {field} {old:g} → {new_val} "
+        f"so units={d} matches energy charges / {field} అంకె సరిచేసాం"
     )
     return b
 
@@ -234,27 +274,81 @@ def _is_typical_customer(v: Optional[float]) -> bool:
 
 
 def snap_arrears(bill: Dict[str, Any], notes: List[str]) -> Dict[str, Any]:
-    """If Total Due equals Bill Amount, a stray 0.60 'arrears' is an OCR slip."""
+    """Reconcile arrears with Bill Amount + ACD + Total Due.
+
+    Do not treat a value equal to Total Due as arrears unless
+    Bill Amount + arrears (+ ACD) also equals Total Due (e.g. a ₹0
+    current bill). Ignore an as-on/after component that merely repeats
+    Bill Amount or Total Due.
+    """
     b = bill
     printed = printed_bill_amount(b)
     total_due = _num(b.get("total_due"))
     arrears = _num(b.get("arrears"))
     as_on = _num(b.get("arrears_as_on"))
     after = _num(b.get("arrears_after"))
-    if as_on is not None or after is not None:
-        s = round((as_on or 0) + (after or 0), 2)
-        if arrears is None or not _close(arrears, s, tol=0.05):
-            b["arrears"] = s
+    acd = _num(b.get("acd_due")) or 0.0
+    bill_amt = _num(b.get("bill_amount"))
+    if bill_amt is None:
+        bill_amt = printed
+    expected = None
+    if total_due is not None and bill_amt is not None:
+        expected = round(total_due - bill_amt - acd, 2)
+
+    def _looks_like_copy(val: Optional[float]) -> bool:
+        if val is None:
+            return False
+        if bill_amt is not None and _close(val, bill_amt, tol=0.05) and not (
+            expected is not None and _close(val, expected, tol=0.05)
+        ):
+            return True
+        if total_due is not None and _close(val, total_due, tol=0.05):
+            # Legitimate only when bill + this value (+ ACD) equals total
+            if bill_amt is not None and _close((bill_amt or 0) + val + acd, total_due, tol=0.05):
+                return False
+            return True
+        return False
+
+    cleaned_as_on = None if _looks_like_copy(as_on) else as_on
+    cleaned_after = None if _looks_like_copy(after) else after
+
+    def _set(val: float, why: str) -> Dict[str, Any]:
+        val = round(max(0.0, val), 2)
+        old = arrears
+        if old is None or not _close(old, val, tol=0.05):
+            b["arrears"] = val
+            if old is not None:
+                notes.append(
+                    f"auto-correct chesam: arrears ₹{old:.2f} snapped to ₹{val:.2f} "
+                    f"({why}) / బకాయిలు సరిచేసాం"
+                )
+            else:
+                b["arrears"] = val
+        else:
+            b["arrears"] = val
         return b
+
+    if cleaned_as_on is not None or cleaned_after is not None:
+        s = round((cleaned_as_on or 0) + (cleaned_after or 0), 2)
+        if expected is None or _close(s, expected, tol=0.05):
+            return _set(s, "as-on + after")
+        if expected is not None:
+            if cleaned_after is not None and _close(cleaned_after, expected, tol=0.05):
+                return _set(cleaned_after, "Arrears after")
+            if cleaned_as_on is not None and _close(cleaned_as_on, expected, tol=0.05):
+                return _set(cleaned_as_on, "Arrears as on")
+
+    if arrears is not None and total_due is not None and _close(arrears, total_due, tol=0.05):
+        if bill_amt is not None and _close((bill_amt or 0) + arrears + acd, total_due, tol=0.05):
+            return b  # genuine: typically a ₹0 current bill
+        if expected is not None and expected >= -0.05:
+            return _set(expected, "Total Due − Bill Amount")
+
     if printed is None or total_due is None or arrears is None:
         return b
-    gap = round(total_due - printed, 2)
+    gap = round(total_due - (printed or 0) - acd, 2)
     if abs(gap) <= 1.0 and abs(arrears - gap) > 0.5:
-        b["arrears"] = max(0.0, gap)
-        notes.append(
-            f"auto-correct chesam: arrears ₹{arrears:.2f} snapped to ₹{b['arrears']:.2f} "
-            f"(Total Due − Bill Amount) / బకాయిలు సరిచేసాం"
-        )
+        return _set(max(0.0, gap), "Total Due − Bill Amount")
     return b
 
 

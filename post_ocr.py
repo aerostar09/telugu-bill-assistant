@@ -38,6 +38,31 @@ def _is_typical_surcharge(v: Optional[float]) -> bool:
     return any(abs(float(v) - s) <= 0.05 for s in SURCHARGE_TYPICAL)
 
 
+DPS_SNAP_TOL = 1.0  # rupees — OCR slip around a known ₹10 / ₹25 DPS
+
+
+def snap_typical_surcharge(bill: Dict[str, Any], notes: Optional[List[str]] = None) -> Tuple[Dict[str, Any], List[str]]:
+    """Snap DPS/surcharge to ₹10 or ₹25 when it is within ±₹1 of one of them."""
+    b = dict(bill)
+    notes = list(notes or [])
+    v = _num(b.get("surcharge"))
+    if v is None or abs(v) < 0.005 or _is_typical_surcharge(v):
+        return b, notes
+    hits = [(s, abs(float(v) - s)) for s in SURCHARGE_TYPICAL if abs(float(v) - s) <= DPS_SNAP_TOL]
+    if not hits:
+        return b, notes
+    hits.sort(key=lambda x: x[1])
+    if len(hits) > 1 and abs(hits[0][1] - hits[1][1]) < 0.005:
+        return b, notes
+    snapped = float(hits[0][0])
+    b["surcharge"] = snapped
+    notes.append(
+        f"auto-correct chesam: surcharge ₹{v:.2f} snapped to typical DPS ₹{snapped:.2f}"
+        f" / ఆలస్య రుసుము ₹{snapped:.2f} కి సరిచేసాం"
+    )
+    return b, notes
+
+
 # Line items that add toward the printed bill (subsidy is subtracted).
 SUM_KEYS = (
     "energy_charges", "fixed_charges", "customer_charges", "electricity_duty",
@@ -105,6 +130,10 @@ def reconcile_line_sum(bill: Dict[str, Any], notes: Optional[List[str]] = None) 
     printed = printed_bill_amount(b)
     if printed is None:
         return b, notes
+
+    # Snap a near-DPS surcharge before any Loss/Gain residual is computed,
+    # so a ₹0.20 slip cannot be absorbed into rounding.
+    b, notes = snap_typical_surcharge(b, notes)
 
     if not _sum_matches(b, printed):
         # (a) duplicated value across two lines — drop the lower-priority copy
@@ -291,6 +320,33 @@ def apply_post_ocr_corrections(bill: Dict[str, Any]) -> Tuple[Dict[str, Any], Li
                 f"auto-correct chesam: true-up ₹{found_val:.2f} was in {found_key}; "
                 f"moved to PP TRUEUP ({n:g} × {tu_rate:.2f} = ₹{expected:.2f})"
                 f" / true-up {found_key} నుండి PP TRUEUP కి మార్చాం"
+            )
+
+    # If FY units were read but the amount is missing or 0, recompute
+    # units × official paise (30p in Nov 2026, 50p from December) — unless
+    # the printed total already matches with a zero true-up.
+    t = _num(b.get("trueup_charges"))
+    n = _num(b.get("trueup_units"))
+    if n is not None and n > 0 and (t is None or abs(t) < 0.005):
+        try:
+            from tariff import trueup_rate_for_bill_date
+            tu_rate = float(trueup_rate_for_bill_date(b.get("bill_date")))
+        except Exception:
+            tu_rate = 0.30
+        expected = round(float(n) * tu_rate, 2)
+        printed_now = printed_bill_amount(b)
+        trial_zero = dict(b)
+        trial_zero["trueup_charges"] = 0.0
+        already_ok = printed_now is not None and _sum_matches(trial_zero, printed_now)
+        if already_ok:
+            if t is None:
+                b["trueup_charges"] = 0.0
+        elif expected > 0:
+            b["trueup_charges"] = expected
+            notes.append(
+                f"auto-correct chesam: true-up amount missing/0; "
+                f"set to {n:g} × {tu_rate:.2f} = ₹{expected:.2f}"
+                f" / ట్రూ-అప్ {n:g} × {int(round(tu_rate*100))}పైసలు పెట్టాం"
             )
 
     # ------------------------------------------------------------------
@@ -512,6 +568,25 @@ def apply_post_ocr_corrections(bill: Dict[str, Any]) -> Tuple[Dict[str, Any], Li
                 f"auto-correct chesam: true-up ₹{t:.2f} snapped to ₹{expected:.2f} "
                 f"({n:g} × {rate:.2f}) / ట్రూ-అప్ పైసలు సరిచేసాం"
             )
+
+    # ------------------------------------------------------------------
+    # 6c. Canonical category slab (drop title leaks / bare "DOMESTIC")
+    # ------------------------------------------------------------------
+    from tariff import normalize_extracted_category, category_label_is_specific
+    raw_cat = b.get("category")
+    units_now = _num(b.get("units"))
+    if units_now is not None or category_label_is_specific(raw_cat):
+        new_cat = normalize_extracted_category(raw_cat, units_now)
+        if raw_cat != new_cat:
+            b["category"] = new_cat
+            if raw_cat and not category_label_is_specific(raw_cat):
+                notes.append(
+                    f"auto-correct chesam: category '{raw_cat}' is not a slab label; "
+                    f"inferred {new_cat} from units"
+                    f" / కేటగిరీ {new_cat} యూనిట్ల నుండి పెట్టాం"
+                )
+            else:
+                b["category"] = new_cat
 
     # ------------------------------------------------------------------
     # 7. Reconcile line-item sum vs printed bill (duplicates, optional zeros,
