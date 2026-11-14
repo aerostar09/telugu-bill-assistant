@@ -17,8 +17,8 @@ FONTS = ASSETS / "fonts"
 QR_PATH = ASSETS / "qr_app.png"
 CONCEPT = "Demo / Concept – not an official TGSPDCL service"
 
-TEAL = (15, 110, 98)
-TEAL_DARK = (11, 85, 76)
+TEAL = (10, 83, 75)
+TEAL_DARK = (10, 63, 58)
 INK = (18, 32, 58)
 MUTED = (91, 107, 128)
 LINE = (215, 222, 232)

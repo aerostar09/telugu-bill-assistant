@@ -639,7 +639,6 @@ def render_citizen_tab(demo: bool, use_sarvam: bool) -> None:
     existing = st.session_state.get("result") or {}
     has_result = bool(existing.get("bill")) and not existing.get("guard")
     if not demo:
-        st.markdown('<div class="upload-panel">', unsafe_allow_html=True)
         uploaded = st.file_uploader(
             t("upload_label"),
             type=["jpg", "jpeg", "png"],
@@ -651,6 +650,7 @@ def render_citizen_tab(demo: bool, use_sarvam: bool) -> None:
             clicked = st.button(
                 t("upload_button"),
                 type="primary",
+                icon="📄",
                 disabled=uploaded is None,
                 width="stretch",
                 key="read_bill_btn",
@@ -658,11 +658,11 @@ def render_citizen_tab(demo: bool, use_sarvam: bool) -> None:
         with c2:
             wa_clicked = st.button(
                 "WhatsApp కి పంపండి",
+                icon="📲",
                 disabled=(uploaded is None and not has_result),
                 width="stretch",
                 key="wa_send_top",
             )
-        st.markdown("</div>", unsafe_allow_html=True)
         plan = share_button_plan(
             uploaded is not None,
             has_result,
@@ -680,13 +680,13 @@ def render_citizen_tab(demo: bool, use_sarvam: bool) -> None:
         elif plan == "share_only":
             st.session_state["share_now"] = True
     else:
-        st.markdown('<div class="upload-panel">', unsafe_allow_html=True)
         st.caption("డెమో మోడ్ ఆన్ — అసలు బిల్లు ఫోటో అవసరం లేదు, NVIDIA కాల్ లేదు, PII లేదు.")
         c1, c2 = st.columns(2)
         with c1:
             st.button(
                 t("upload_button"),
                 type="primary",
+                icon="📄",
                 disabled=True,
                 width="stretch",
                 key="read_bill_demo",
@@ -694,10 +694,10 @@ def render_citizen_tab(demo: bool, use_sarvam: bool) -> None:
         with c2:
             wa_clicked = st.button(
                 "WhatsApp కి పంపండి",
+                icon="📲",
                 width="stretch",
                 key="wa_send_demo",
             )
-        st.markdown("</div>", unsafe_allow_html=True)
         if wa_clicked:
             st.session_state["share_now"] = True
 
@@ -906,6 +906,11 @@ def main() -> None:
             st.session_state["prev_result"] = None
             st.rerun()
         _render_share_tab(st.session_state.get("result"), on_try_demo=_try_demo)
+
+    st.markdown(
+        '<div class="tisc-footer">Demo / Concept – not an official TGSPDCL service</div>',
+        unsafe_allow_html=True,
+    )
 
 
 if __name__ == "__main__":
