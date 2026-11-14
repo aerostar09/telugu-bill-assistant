@@ -8,7 +8,7 @@ from urllib.parse import quote
 
 from PIL import Image, ImageDraw, ImageFont, features
 
-from bill_lines import nonzero_rows, payable_amount
+from bill_lines import ARREARS_KEYS, effective_arrears, nonzero_rows, payable_amount
 from receipt_ui import next_units_cliff
 
 APP_URL = "https://telugu-electricitybill-assistant.streamlit.app/"
@@ -129,7 +129,7 @@ def short_share_text(
 
     Used everywhere share text appears (wa.me, Web Share, inline, tab).
     """
-    from bill_lines import AFTER_BILL_ROWS, CHARGE_ROWS, payable_amount
+    from bill_lines import AFTER_BILL_ROWS, ARREARS_KEYS, CHARGE_ROWS, _split_arrears_are_usable, effective_arrears, payable_amount
     from draft_features import trueup_share_url_line
     from forecast import consumer_forecast_range, format_rupee_range
     from tariff import trueup_rate_for_bill_date, trueup_rate_for_next_bill
@@ -186,7 +186,17 @@ def short_share_text(
     for key, name, _ in CHARGE_ROWS + AFTER_BILL_ROWS:
         if key in listed:
             continue
+        if key in ARREARS_KEYS and effective_arrears(bill) < 1.0:
+            continue
         amt = _amt(bill.get(key))
+        if key in ARREARS_KEYS:
+            eff = effective_arrears(bill)
+            if key == "arrears" and _split_arrears_are_usable(bill, eff):
+                continue
+            if key != "arrears" and not _split_arrears_are_usable(bill, eff):
+                continue
+            if key == "arrears":
+                amt = eff
         if amt is None or abs(amt) < 0.005:
             continue
         sign = "−" if amt < 0 or key == "subsidy" else ""

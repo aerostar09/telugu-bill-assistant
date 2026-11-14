@@ -10,6 +10,8 @@ from self_checks import run_all_checks
 from share_card import share_button_plan, short_share_text
 from dashboard import WA_MAX_CHARS, build_dashboard_model, whatsapp_summary
 from test_lt_notice import lt_notice
+from bill_lines import nonzero_rows, payable_amount
+from post_ocr import apply_post_ocr_corrections
 
 
 class ShareTextFormatTests(unittest.TestCase):
@@ -144,6 +146,30 @@ class DemoShareBandTests(unittest.TestCase):
         )
         self.assertIn(band, text)
         self.assertNotIn("655.91", text)
+
+
+class StrayArrearsShareTests(unittest.TestCase):
+    def test_nov_style_bill_share_has_no_arrears_line_for_stray_60_paise(self):
+        """Jay's Nov bill shape: Bill = Total Due = ₹757, as-on leaked ₹0.60."""
+        raw = lt_notice(arrears_as_on=0.60, arrears_after=0.0, arrears=0.0)
+        bill, _ = apply_post_ocr_corrections(raw)
+        text = short_share_text(bill, totals_ok=True, include_link=False)
+        self.assertNotIn("బకాయిలు", text)
+        self.assertNotIn("0.60", text)
+        self.assertIn("⚡ మొత్తం చెల్లించాల్సిన బిల్లు (Total Due): ₹757.00", text)
+        self.assertAlmostEqual(payable_amount(bill), 757.0, places=2)
+        keys = [r["key"] for r in nonzero_rows(bill)]
+        self.assertNotIn("arrears_as_on", keys)
+        self.assertNotIn("arrears", keys)
+        # Loss/Gain stays the printed rounding, not the stray 0.60
+        self.assertAlmostEqual(bill["loss_gain"], -0.24, places=2)
+
+    def test_share_still_lists_consistent_arrears(self):
+        bill = lt_notice(arrears=200, arrears_as_on=200, arrears_after=0, total_due=957.00)
+        text = short_share_text(bill, totals_ok=True, include_link=False)
+        self.assertIn("బకాయిలు", text)
+        self.assertIn("₹200.00", text)
+        self.assertIn("Total Due): ₹957.00", text)
 
 
 if __name__ == "__main__":

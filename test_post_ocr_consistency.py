@@ -7,6 +7,7 @@ import unittest
 
 from late_reading import apply_due_date_safety, resolve_billing_days
 from post_ocr import apply_post_ocr_corrections, line_sum
+from bill_lines import effective_arrears, nonzero_rows, payable_amount
 from self_checks import run_all_checks
 from tariff import energy_charges, infer_category, quote_bill, trueup_charges
 
@@ -192,6 +193,51 @@ class ArrearsVsTotalDueTests(unittest.TestCase):
         raw["loss_gain"] = 0.0
         bill, _ = apply_post_ocr_corrections(raw)
         self.assertAlmostEqual(bill["arrears"], 500.0, places=2)
+
+    def test_stray_sub_rupee_as_on_is_zeroed_when_bill_equals_total(self):
+        """₹0.60 in Arrears as-on when Bill = Total Due is not real arrears.
+
+        The 0.60 is rounding-scale (often a Loss/Gain or paise field leak)
+        and must be cleared on every arrears field, not just the combined one.
+        """
+        raw = _domestic(
+            units=154,
+            days=31,
+            bill_date="07/11/2026",
+            trueup_units=96,
+            bill_amount=757.0,
+            total_due=757.0,
+            arrears=0.0,
+        )
+        raw["arrears_as_on"] = 0.60
+        raw["arrears_after"] = 0.0
+        raw["loss_gain"] = -0.24
+        bill, notes = apply_post_ocr_corrections(raw)
+        self.assertAlmostEqual(bill.get("arrears") or 0.0, 0.0, places=2)
+        self.assertAlmostEqual(bill.get("arrears_as_on") or 0.0, 0.0, places=2)
+        self.assertAlmostEqual(bill.get("arrears_after") or 0.0, 0.0, places=2)
+        self.assertEqual(effective_arrears(bill), 0.0)
+        keys = [r["key"] for r in nonzero_rows(bill)]
+        self.assertNotIn("arrears", keys)
+        self.assertNotIn("arrears_as_on", keys)
+        self.assertNotIn("arrears_after", keys)
+        self.assertAlmostEqual(bill["loss_gain"], -0.24, places=2)
+        self.assertAlmostEqual(payable_amount(bill), 757.0, places=2)
+        self.assertTrue(any("arrear" in n.lower() or "బకాయి" in n for n in notes))
+
+    def test_display_hides_stray_as_on_even_before_post_ocr(self):
+        """Share/receipt must not show ₹0.60 as-on if Bill already equals Total Due."""
+        raw = _domestic(
+            units=154, days=31, bill_date="07/11/2026",
+            trueup_units=96, bill_amount=757.0, total_due=757.0, arrears=0.0,
+        )
+        raw["arrears_as_on"] = 0.60
+        raw["arrears_after"] = 0.0
+        self.assertEqual(effective_arrears(raw), 0.0)
+        keys = [r["key"] for r in nonzero_rows(raw)]
+        self.assertNotIn("arrears_as_on", keys)
+        self.assertNotIn("arrears", keys)
+        self.assertAlmostEqual(payable_amount(raw), 757.0, places=2)
 
 
 class DaysAndDueDateTests(unittest.TestCase):

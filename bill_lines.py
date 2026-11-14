@@ -64,12 +64,74 @@ def _amt(v: Any) -> Optional[float]:
         return None
 
 
+ARREARS_KEYS = ("arrears", "arrears_as_on", "arrears_after")
+ARREARS_MIN_SHOW = 1.0  # rupees — paise/rounding slips are not arrears
+ARREARS_SUM_TOL = 1.0
+
+
+def _bill_and_total(bill: Dict[str, Any]) -> Tuple[Optional[float], Optional[float], float]:
+    bill_amt = _amt(bill.get("bill_amount"))
+    if bill_amt is None:
+        bill_amt = _amt(bill.get("bill_amount_printed"))
+    total_due = _amt(bill.get("total_due"))
+    acd = _amt(bill.get("acd_due")) or 0.0
+    return bill_amt, total_due, acd
+
+
+def _arrears_consistent(bill_amt: Optional[float], arr: float, acd: float,
+                        total_due: Optional[float]) -> bool:
+    if bill_amt is None or total_due is None:
+        return True
+    return abs((bill_amt + arr + acd) - total_due) <= ARREARS_SUM_TOL
+
+
+def effective_arrears(bill: Dict[str, Any]) -> float:
+    """Arrears to show or use; 0 if inconsistent or below ₹1.
+
+    Real arrears must be at least ₹1 and satisfy
+    Bill Amount + arrears + ACD ≈ Total Due within ±₹1. A stray ₹0.60
+    'as on' when Bill already equals Total Due is treated as 0 (often a
+    Loss/Gain or rounding leak). If the as-on + after split is inconsistent
+    but the combined `arrears` field still fits the totals, that combined
+    amount is used.
+    """
+    bill_amt, total_due, acd = _bill_and_total(bill)
+    as_on = _amt(bill.get("arrears_as_on"))
+    after = _amt(bill.get("arrears_after"))
+    arrears = _amt(bill.get("arrears"))
+    candidates: List[float] = []
+    if (as_on is not None and abs(as_on) >= 0.005) or (after is not None and abs(after) >= 0.005):
+        candidates.append(round((as_on or 0.0) + (after or 0.0), 2))
+    if arrears is not None:
+        candidates.append(round(arrears, 2))
+    seen = set()
+    for arr in candidates:
+        if arr in seen:
+            continue
+        seen.add(arr)
+        if arr >= ARREARS_MIN_SHOW and _arrears_consistent(bill_amt, arr, acd, total_due):
+            return arr
+    return 0.0
+
+
+def _split_arrears_are_usable(bill: Dict[str, Any], eff: float) -> bool:
+    if eff < ARREARS_MIN_SHOW:
+        return False
+    as_on = _amt(bill.get("arrears_as_on")) or 0.0
+    after = _amt(bill.get("arrears_after")) or 0.0
+    if abs(as_on) < 0.005 and abs(after) < 0.005:
+        return False
+    return abs(round(as_on + after, 2) - eff) <= 0.05
+
+
 def nonzero_rows(bill: Dict[str, Any]) -> List[Dict[str, Any]]:
     """Charge rows to show on the receipt: official order, skip zeros.
 
     Subsidy is included when it reduces the bill (amount > 0).
-    If arrears_as_on / arrears_after are present, the combined `arrears`
-    row is skipped so we do not show the same rupees twice.
+    If arrears_as_on / arrears_after are present and they sum to the
+    effective arrears, the combined `arrears` row is skipped so we do
+    not show the same rupees twice. Inconsistent or sub-₹1 arrears are
+    omitted entirely.
     """
     out: List[Dict[str, Any]] = []
     for key, name, meaning in CHARGE_ROWS:
@@ -77,9 +139,20 @@ def nonzero_rows(bill: Dict[str, Any]) -> List[Dict[str, Any]]:
         if amt is None or abs(amt) < 0.005:
             continue
         out.append({"key": key, "name_te": name, "meaning_te": meaning, "amount": round(amt, 2)})
-    split = _amt(bill.get("arrears_as_on")) is not None or _amt(bill.get("arrears_after")) is not None
+    eff = effective_arrears(bill)
+    split = _split_arrears_are_usable(bill, eff)
     for key, name, meaning in AFTER_BILL_ROWS:
-        if key == "arrears" and split:
+        if key in ARREARS_KEYS:
+            if eff < ARREARS_MIN_SHOW:
+                continue
+            if key == "arrears" and split:
+                continue
+            if key != "arrears" and not split:
+                continue
+            amt = _amt(bill.get(key)) if key != "arrears" else eff
+            if amt is None or abs(amt) < 0.005:
+                continue
+            out.append({"key": key, "name_te": name, "meaning_te": meaning, "amount": round(float(amt), 2)})
             continue
         amt = _amt(bill.get(key))
         if amt is None or abs(amt) < 0.005:
@@ -89,16 +162,10 @@ def nonzero_rows(bill: Dict[str, Any]) -> List[Dict[str, Any]]:
 
 
 def payable_amount(bill: Dict[str, Any]) -> Optional[float]:
-    """Total Due when arrears (or a higher total) exist; otherwise Bill Amount."""
-    bill_amt = _amt(bill.get("bill_amount"))
-    if bill_amt is None:
-        bill_amt = _amt(bill.get("bill_amount_printed"))
-    total_due = _amt(bill.get("total_due"))
-    arrears = _amt(bill.get("arrears")) or 0.0
-    as_on = _amt(bill.get("arrears_as_on")) or 0.0
-    after = _amt(bill.get("arrears_after")) or 0.0
-    arr = as_on + after if (as_on or after) else arrears
-    if arr > 0.005 and total_due is not None:
+    """Total Due when consistent arrears (or a higher total) exist; otherwise Bill Amount."""
+    bill_amt, total_due, _acd = _bill_and_total(bill)
+    arr = effective_arrears(bill)
+    if arr >= ARREARS_MIN_SHOW and total_due is not None:
         return total_due
     if total_due is not None and bill_amt is not None and total_due > bill_amt + 0.5:
         return total_due

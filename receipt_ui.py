@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from typing import Any, Dict, Optional
 
-from bill_lines import CHARGE_ROWS, nonzero_rows, payable_amount
+from bill_lines import CHARGE_ROWS, effective_arrears, nonzero_rows, payable_amount
 from dashboard import _inr, energy_formula
 from tariff import delayed_payment_surcharge, trueup_rate_for_bill_date, infer_category
 
@@ -109,8 +109,7 @@ def render_receipt_card(bill: Dict[str, Any], formulas: Optional[Dict[str, str]]
         )
     pay = payable_amount(bill)
     pay_label = "మొత్తం చెల్లింపు"
-    arrears = float(bill.get("arrears") or 0) + float(bill.get("arrears_as_on") or 0) + float(bill.get("arrears_after") or 0)
-    if arrears > 0.005 and bill.get("total_due") is not None:
+    if effective_arrears(bill) >= 1.0 and bill.get("total_due") is not None:
         pay_label = "మొత్తం చెల్లింపు (Total Due)"
     if pay is not None:
         parts.append(

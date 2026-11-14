@@ -312,21 +312,56 @@ def snap_arrears(bill: Dict[str, Any], notes: List[str]) -> Dict[str, Any]:
     cleaned_as_on = None if _looks_like_copy(as_on) else as_on
     cleaned_after = None if _looks_like_copy(after) else after
 
+    def _clear_stale_split(eff: float) -> None:
+        as_now = _num(b.get("arrears_as_on"))
+        after_now = _num(b.get("arrears_after"))
+        split_sum = round((as_now or 0.0) + (after_now or 0.0), 2)
+        if eff < 1.0 or abs(split_sum - eff) > 0.05:
+            for k in ("arrears_as_on", "arrears_after"):
+                v = _num(b.get(k))
+                if v is not None and abs(v) >= 0.005:
+                    b[k] = 0.0
+
+    def _finalize() -> Dict[str, Any]:
+        from bill_lines import effective_arrears
+        eff = effective_arrears(b)
+        if eff < 1.0:
+            changed = False
+            for k in ("arrears", "arrears_as_on", "arrears_after"):
+                v = _num(b.get(k))
+                if v is not None and abs(v) >= 0.005:
+                    b[k] = 0.0
+                    changed = True
+            if changed:
+                notes.append(
+                    "auto-correct chesam: dropped sub-₹1 or inconsistent arrears "
+                    "(Bill Amount already matches Total Due) / "
+                    "బకాయిలు ₹1 కంటే తక్కువ లేదా లెక్కకు సరిపోలలేదు, తీసివేసాం"
+                )
+            else:
+                b["arrears"] = 0.0
+        else:
+            b["arrears"] = eff
+            _clear_stale_split(eff)
+        return b
+
     def _set(val: float, why: str) -> Dict[str, Any]:
         val = round(max(0.0, val), 2)
         old = arrears
         if old is None or not _close(old, val, tol=0.05):
             b["arrears"] = val
-            if old is not None:
+            if old is not None and val >= 1.0:
                 notes.append(
                     f"auto-correct chesam: arrears ₹{old:.2f} snapped to ₹{val:.2f} "
                     f"({why}) / బకాయిలు సరిచేసాం"
                 )
+            elif old is not None and val < 1.0:
+                pass  # _finalize adds the drop note
             else:
                 b["arrears"] = val
         else:
             b["arrears"] = val
-        return b
+        return _finalize()
 
     if cleaned_as_on is not None or cleaned_after is not None:
         s = round((cleaned_as_on or 0) + (cleaned_after or 0), 2)
@@ -340,16 +375,16 @@ def snap_arrears(bill: Dict[str, Any], notes: List[str]) -> Dict[str, Any]:
 
     if arrears is not None and total_due is not None and _close(arrears, total_due, tol=0.05):
         if bill_amt is not None and _close((bill_amt or 0) + arrears + acd, total_due, tol=0.05):
-            return b  # genuine: typically a ₹0 current bill
+            return _finalize()  # genuine: typically a ₹0 current bill
         if expected is not None and expected >= -0.05:
             return _set(expected, "Total Due − Bill Amount")
 
     if printed is None or total_due is None or arrears is None:
-        return b
+        return _finalize()
     gap = round(total_due - (printed or 0) - acd, 2)
     if abs(gap) <= 1.0 and abs(arrears - gap) > 0.5:
         return _set(max(0.0, gap), "Total Due − Bill Amount")
-    return b
+    return _finalize()
 
 
 def apply_thermal_repairs(bill: Dict[str, Any], notes: Optional[List[str]] = None) -> Tuple[Dict[str, Any], List[str]]:
