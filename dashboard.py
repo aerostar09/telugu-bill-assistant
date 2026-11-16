@@ -403,7 +403,7 @@ def render_dashboard(model: Dict[str, Any]) -> None:
     ok = checks.get("ok")
     if ok:
         st.markdown(
-            '<div class="verdict verdict-ok" data-testid="trust-verdict">లెక్క సరిగా ఉంది ✅</div>',
+            '<div class="verdict verdict-ok" data-testid="trust-verdict">చదివిన లైన్లు కలిపితే బిల్లులో ముద్రించిన మొత్తానికి సరిపోయాయి (₹1 లోపు) ✅</div>',
             unsafe_allow_html=True,
         )
     else:
