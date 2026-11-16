@@ -40,6 +40,7 @@ from nvidia_pipeline import (
     extract_bill_pipeline_cached,
     extract_history_table_pipeline,
     nvidia_key_configured,
+    provider_key_configured,
     format_nvidia_user_message,
     NIM_TIMEOUT,
     NIM_MODEL,
@@ -380,7 +381,7 @@ def render_user_error(msg: str, tech: Optional[str] = None) -> None:
 
 def _missing_key_message() -> None:
     render_user_error(
-        "NVIDIA_API_KEY లేదు. డెమో మోడ్ (?demo=1) కీ లేకుండా పనిచేస్తుంది. "
+        f"{'SARVAM_API_KEY' if _vision_name().startswith('Sarvam') else 'NVIDIA_API_KEY'} లేదు. డెమో మోడ్ (?demo=1) కీ లేకుండా పనిచేస్తుంది. "
         "అసలు ఫోటో చదవడానికి Streamlit secrets లేదా envలో కీ పెట్టండి.\n"
         "API key is not configured. Demo mode works without a key."
     )
@@ -583,6 +584,11 @@ def _result_from_scenario(key: str, use_sarvam: bool = False) -> Dict[str, Any]:
 
 
 
+def _vision_name() -> str:
+    from sarvam_provider import get_provider
+    return "Sarvam AI" if get_provider() == "sarvam" else "NVIDIA Vision"
+
+
 def _ingest_uploaded_bill(uploaded, use_sarvam: bool):
     """Run the same extract → explain → estimate path as the red Read button."""
     if uploaded is None:
@@ -590,7 +596,7 @@ def _ingest_uploaded_bill(uploaded, use_sarvam: bool):
         return None
     img = Image.open(uploaded)
     with st.spinner("బిల్లు చదువుతున్నాం..."):
-        if not nvidia_key_configured():
+        if not provider_key_configured():
             _missing_key_message()
             return None
         try:
@@ -757,7 +763,7 @@ def render_citizen_tab(demo: bool, use_sarvam: bool) -> None:
         st.markdown(
             '<div class="privacy" data-testid="privacy-note">'
             "గోప్యత: బిల్లు ఫోటోను మేము సేవ్ చేయం, USC/పేరు స్క్రీన్‌పై దాచబడతాయి. "
-            "చదవడానికి ఫోటో NVIDIA Visionకి వెళ్తుంది.</div>",
+            f"చదవడానికి ఫోటో {_vision_name()}కి వెళ్తుంది.</div>",
             unsafe_allow_html=True,
         )
     with tab_c:
@@ -870,7 +876,7 @@ def main() -> None:
                 key="use_sarvam",
             )
             if not demo:
-                st.caption("AI key: configured yes" if nvidia_key_configured() else "AI key: configured no")
+                st.caption("AI key: configured yes" if provider_key_configured() else "AI key: configured no")
             st.caption(
                 f"Vision: `{NIM_MODEL}` · fallback `{NIM_FALLBACK_MODEL}` · "
                 f"timeout {NIM_TIMEOUT}s · hash cache on"

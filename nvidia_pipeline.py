@@ -353,20 +353,37 @@ def extract_bill_pipeline(img: Image.Image) -> Dict[str, Any]:
     )
     attempts = []
     last_err = None
-    plan = [
-        (1, NIM_MODEL, NIM_TIMEOUT),
-        (2, NIM_FALLBACK_MODEL, NIM_FALLBACK_TIMEOUT),
-    ]
+    from sarvam_provider import get_provider
+    provider = get_provider()
+    if provider == "sarvam":
+        from sarvam_provider import (
+            call_sarvam_once, SARVAM_MODEL, SARVAM_FALLBACK_MODEL, SARVAM_MODELS, LAST_CALL,
+        )
+        call_fn = call_sarvam_once
+        plan = [
+            (1, SARVAM_MODEL, SARVAM_MODELS[SARVAM_MODEL]["timeout_s"]),
+            (2, SARVAM_FALLBACK_MODEL, SARVAM_MODELS[SARVAM_FALLBACK_MODEL]["timeout_s"]),
+        ]
+    else:
+        LAST_CALL = None
+        call_fn = call_nvidia_once
+        plan = [
+            (1, NIM_MODEL, NIM_TIMEOUT),
+            (2, NIM_FALLBACK_MODEL, NIM_FALLBACK_TIMEOUT),
+        ]
     for n, model, timeout in plan:
         t0 = time.time()
         try:
-            raw, latency, _raw_text = call_nvidia_once(
+            raw, latency, _raw_text = call_fn(
                 jpeg, model=model, timeout=timeout
             )
             ev = _evaluate(raw)
             ev["attempt"] = n
             ev["latency_s"] = latency
             ev["error"] = None
+            if LAST_CALL is not None:
+                ev["usage"] = dict(LAST_CALL.get("usage") or {})
+                ev["cost_inr"] = LAST_CALL.get("cost_inr")
             attempts.append(ev)
             ev["model"] = model
             _log_nvidia(
@@ -385,6 +402,7 @@ def extract_bill_pipeline(img: Image.Image) -> Dict[str, Any]:
             elapsed = getattr(e, "elapsed_s", None) or round(time.time() - t0, 2)
             attempts.append({
                 "attempt": n,
+                "cost_inr": (LAST_CALL or {}).get("cost_inr") if LAST_CALL is not None else None,
                 "ok": False,
                 "failure_count": 10**6,
                 "error": str(e),
@@ -423,6 +441,7 @@ def extract_bill_pipeline(img: Image.Image) -> Dict[str, Any]:
         kept = min(usable, key=lambda a: a.get("failure_count", 99))
 
     return {
+        "provider": provider,
         "bill": kept["bill"],
         "corrections": kept.get("corrections") or [],
         "checks": kept["checks"],
@@ -439,6 +458,8 @@ def extract_bill_pipeline(img: Image.Image) -> Dict[str, Any]:
                 "fail_keys": (a.get("checks") or {}).get("fail_keys") if a.get("checks") else None,
                 "latency_s": a.get("latency_s"),
                 "error": a.get("error"),
+                "usage": a.get("usage"),
+                "cost_inr": a.get("cost_inr"),
                 "kept": a["attempt"] == kept["attempt"],
             }
             for a in attempts
@@ -486,7 +507,18 @@ _MEMORY_CACHE: Dict[str, Any] = {}
 
 
 def _cache_key(image_bytes: bytes) -> str:
-    return hashlib.sha256(image_bytes).hexdigest()
+    from sarvam_provider import get_provider
+    h = hashlib.sha256(image_bytes)
+    if get_provider() != "nvidia":  # keep NVIDIA keys unchanged
+        h.update(b"|provider=" + get_provider().encode())
+    return h.hexdigest()
+
+
+def provider_key_configured() -> bool:
+    from sarvam_provider import get_provider, get_sarvam_api_key
+    if get_provider() == "sarvam":
+        return bool(get_sarvam_api_key())
+    return nvidia_key_configured()
 
 
 def load_cached_extract(image_bytes: bytes):
