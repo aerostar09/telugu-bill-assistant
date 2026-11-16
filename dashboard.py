@@ -30,6 +30,7 @@ from tariff import (
     delayed_payment_surcharge,
     customer_charges_for_units,
 )
+from usage_jump import usage_jump_alert
 from history_input import merge_history_rows, history_display_meta, GRUHA_JYOTHI_NOTE_TE
 from late_reading import late_reading_effect, resolve_billing_days
 from forecast import forecast_bill, backtest, history_from_bill, forecast_display_range
@@ -388,6 +389,7 @@ def build_dashboard_model(
         "history": hist,
         "history_is_demo": is_demo,
         "history_meta": meta,
+        "usage_jump": usage_jump_alert(bill, hist, prev_bill),
     }
 
 
@@ -403,7 +405,7 @@ def render_dashboard(model: Dict[str, Any]) -> None:
     ok = checks.get("ok")
     if ok:
         st.markdown(
-            '<div class="verdict verdict-ok" data-testid="trust-verdict">చదివిన లైన్లు కలిపితే బిల్లులో ముద్రించిన మొత్తానికి సరిపోయాయి (₹1 లోపు) ✅</div>',
+            '<div class="verdict verdict-ok" data-testid="trust-verdict">బిల్లులోని లెక్కలు మొత్తానికి సరిపోయాయి ✅</div>',
             unsafe_allow_html=True,
         )
     else:

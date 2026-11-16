@@ -117,6 +117,8 @@ def render_main_understand(
 
     render_hero_card(model, corrections)
     render_match_banner(model)
+    if model.get("usage_jump"):
+        st.warning(model["usage_jump"]["text_te"])
     render_gruha_jyothi_note(model)
     from forecast import consumer_forecast_range, format_rupee_range
     render_receipt_card(model["bill"], gj_mode=(model.get("gruha_jyothi") or {}).get("mode"))
