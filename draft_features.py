@@ -64,17 +64,15 @@ def _inr(n: Optional[float]) -> str:
 def trueup_explainer(bill: Dict[str, Any]) -> str:
     tu = bill.get("trueup_charges")
     tu_u = bill.get("trueup_units")
-    rate = trueup_rate_for_bill_date(bill.get("bill_date"))
     next_rate = trueup_rate_for_next_bill(bill.get("bill_date"))
     lines = [
         "ఈ True-up / PP TRUEUP ఈ నెల వాడిన యూనిట్లపై కాదు. "
         "2022-23 లో DISCOM కి ఎక్కువైన పవర్ కాస్ట్‌ను ఇప్పుడు కొంచెం కొంచెం వసూలు చేస్తున్నారు.",
     ]
-    if tu_u and tu is not None and float(tu) > 0:
-        lines.append(
-            f"మీ బిల్లులో FY 2022-23 యూనిట్లు {float(tu_u):g}. "
-            f"ఈ నెల రేటు యూనిట్‌కు {int(rate*100)} పైసలు → ₹{float(tu):.2f}."
-        )
+    from tariff import trueup_item_formulas
+    formulas = trueup_item_formulas(bill) if (tu_u and tu is not None and float(tu) > 0) else []
+    if formulas:
+        lines.append("మీ బిల్లులో: " + "; ".join(formulas) + ".")
     elif not tu or float(tu or 0) == 0:
         lines.append("ఈ బిల్లులో True-up లైన్ లేదు (లేదా ₹0).")
     lines.append(

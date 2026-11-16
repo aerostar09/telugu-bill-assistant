@@ -23,10 +23,10 @@ def formula_for(key: str, bill: Dict[str, Any]) -> str:
         return f"{int(round(float(units)))} × ₹0.06 = {_inr(round(float(units) * 0.06, 2))}"
     if key == "trueup_charges":
         tu_u = bill.get("trueup_units")
-        tu = bill.get("trueup_charges")
-        rate = trueup_rate_for_bill_date(bill.get("bill_date"))
-        if tu_u:
-            return f"FY 2022-23 {int(float(tu_u))} యూనిట్లు × ₹{rate:.2f} = {_inr(tu)}"
+        from tariff import trueup_item_formulas
+        formulas = trueup_item_formulas(bill, rupee="rs") if tu_u else []
+        if formulas:
+            return "; ".join(formulas)
         return "పాత సంవత్సరం పవర్ ఖర్చు సర్దుబాటు"
     if key == "surcharge":
         dps = delayed_payment_surcharge(bill.get("units"), bill.get("category"))

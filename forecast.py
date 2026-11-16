@@ -40,6 +40,7 @@ from tariff import (
     parse_bill_date,
     quote_bill,
     trueup_rate_for_bill_date,
+    trueup_units_for_bill,
     customer_charges_for_units,
 )
 
@@ -339,7 +340,7 @@ def _quote_for_units(
     days: float = 30,
 ) -> Dict[str, Any]:
     load = _num(bill.get("contracted_load_kw")) or 1.0
-    tu_u = _num(bill.get("trueup_units"))
+    tu_u = trueup_units_for_bill(bill)  # printed FY quantum, never this month
     cust = customer_charge_for(bill, units)
     return quote_bill(
         units,
@@ -414,7 +415,7 @@ def forecast_bill(
         **fc,
         "quotes": quotes,
         "trueup_rate": trueup_rate_for_bill_date(nxt),
-        "trueup_units": _num(bill.get("trueup_units")),
+        "trueup_units": trueup_units_for_bill(bill),
         "next_bill_date": nxt.isoformat(),
         "history": hist,
         "history_is_demo": bool(bill.get("history_is_demo")),

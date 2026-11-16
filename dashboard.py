@@ -217,14 +217,12 @@ def charge_cards_data(bill: Dict[str, Any]) -> List[Dict[str, str]]:
     tu = bill.get("trueup_charges")
     tu_u = bill.get("trueup_units")
     if tu or tu_u:
-        rate = trueup_rate_for_bill_date(bill.get("bill_date"))
+        from tariff import trueup_item_formulas
+        formulas = trueup_item_formulas(bill, rupee="rs") if tu_u else []
         cards.append({
             "title": "PP TRUEUP",
             "amount": _inr(tu or 0),
-            "formula": (
-                f"FY 2022-23 యూనిట్లు {_u(float(tu_u or 0))} × ₹{rate:.2f} = {_inr(tu or 0)}"
-                if tu_u else "బిల్లు నుండి"
-            ),
+            "formula": "; ".join(formulas) if formulas else "బిల్లు నుండి",
         })
     sur = bill.get("surcharge")
     if sur is not None and float(sur) != 0:

@@ -237,8 +237,20 @@ def apply_post_ocr_corrections(bill: Dict[str, Any]) -> Tuple[Dict[str, Any], Li
     notes: List[str] = []
 
     # ------------------------------------------------------------------
-    # 1. True-up: only from FY-2022-23 / PP TRUEUP = N × 0.30
+    # 1. True-up (TGERC 05.10.2026, para 12(c)-(j)): printed FY quantum ×
+    #    the rate allowed for this bill date (Nov 2026 → 0.30, Dec 2026+ →
+    #    0.50, unknown date → either). One line per FY; aggregates are sums.
+    #    Never derive a quantum from another field or from this month's units.
     # ------------------------------------------------------------------
+    from tariff import (
+        trueup_allowed_rates, infer_trueup_rate, normalize_trueup_items, trueup_totals,
+    )
+    allowed_rates = trueup_allowed_rates(b.get("bill_date"))
+    if isinstance(b.get("trueup_items"), list) and b.get("trueup_items"):
+        items0 = normalize_trueup_items(b)
+        su, sa = trueup_totals(items0)
+        b["trueup_units"] = su
+        b["trueup_charges"] = sa
     n = _num(b.get("trueup_units"))
     if n is not None and n <= 0:
         n = None
@@ -247,15 +259,20 @@ def apply_post_ocr_corrections(bill: Dict[str, Any]) -> Tuple[Dict[str, Any], Li
     if t is not None and t == 0:
         t = None
         # leave 0 in place until we maybe replace it
-    try:
-        from tariff import trueup_rate_for_bill_date
-        tu_rate = float(trueup_rate_for_bill_date(b.get("bill_date")))
-    except Exception:
-        tu_rate = 0.30
-    expected = round(n * tu_rate, 2) if n is not None else None
 
-    # Never keep a ₹10/₹25 surcharge-type value as true-up if it doesn't match N×0.30
-    if t is not None and _is_typical_surcharge(t) and not _close(t, expected):
+    def _expected_for(val: Optional[float]) -> Optional[float]:
+        """N × the allowed rate that matches val (or the date's rate)."""
+        if n is None or not allowed_rates:
+            return None
+        r = infer_trueup_rate(n, val, b.get("bill_date"), tol=TRUEUP_TOL) if val is not None else None
+        return round(n * (r if r is not None else allowed_rates[0]), 2)
+
+    def _matches(val: Optional[float]) -> bool:
+        return n is not None and val is not None and infer_trueup_rate(
+            n, val, b.get("bill_date"), tol=TRUEUP_TOL) is not None
+
+    # Never keep a ₹10/₹25 surcharge-type value as true-up if it doesn't match N × rate
+    if t is not None and _is_typical_surcharge(t) and not _matches(t):
         if _num(b.get("surcharge")) in (None, 0):
             b["surcharge"] = t
             notes.append(
@@ -265,74 +282,53 @@ def apply_post_ocr_corrections(bill: Dict[str, Any]) -> Tuple[Dict[str, Any], Li
         b["trueup_charges"] = None
         t = None
 
-    if expected is None or not _close(t, expected):
-        # Fields that sometimes receive the true-up amount by mistake
+    if n is not None and allowed_rates and not _matches(t):
+        # Fields that sometimes receive the true-up amount by mistake. Only a
+        # value that equals the PRINTED quantum × an allowed rate is moved.
         candidates = [
             ("surcharge", _num(b.get("surcharge"))),
             ("adjustment", _num(b.get("adjustment"))),
             ("fsa_fca", _num(b.get("fsa_fca"))),
             ("loss_gain", _num(b.get("loss_gain"))),
         ]
-        # Also scan units-as-charges? no.
         found_key = None
         found_val = None
         for key, val in candidates:
-            if _close(val, expected):
+            if _matches(val):
                 found_key, found_val = key, val
                 break
-        # If N is missing, infer N from a candidate that is a clean multiple of 0.30
-        # (never from a typical ₹10/₹25 surcharge).
-        if found_key is None:
-            for key, val in candidates:
-                if val is None or val <= 0 or _is_typical_surcharge(val):
-                    continue
-                for rate in (0.30, 0.50):
-                    q = val / rate
-                    if abs(q - round(q)) <= 0.05:
-                        qi = int(round(q))
-                        if 1 <= qi <= PLAUSIBLE_UNITS_MAX:
-                            found_key, found_val = key, val
-                            n = float(qi)
-                            expected = round(n * rate, 2)
-                            tu_rate = rate
-                            b["trueup_units"] = qi
-                            break
-                if found_key is not None:
-                    break
 
         if found_key is not None and found_val is not None:
             old_t = t
             b["trueup_charges"] = found_val
             # put the old true-up back only if it looks like a surcharge, else 0
             if found_key == "surcharge":
-                if old_t is not None and old_t != 0 and not _close(old_t, expected):
+                if old_t is not None and old_t != 0 and not _matches(old_t):
                     b["surcharge"] = old_t
                 else:
                     b["surcharge"] = 0
             else:
                 # clear the field we stole the true-up from if it was a mislabel
-                if old_t is not None and old_t != 0 and not _close(old_t, expected):
+                if old_t is not None and old_t != 0 and not _matches(old_t):
                     b[found_key] = old_t
                 else:
                     b[found_key] = 0
             t = found_val
+            tu_rate = infer_trueup_rate(n, found_val, b.get("bill_date"), tol=TRUEUP_TOL)
             notes.append(
                 f"auto-correct chesam: true-up ₹{found_val:.2f} was in {found_key}; "
-                f"moved to PP TRUEUP ({n:g} × {tu_rate:.2f} = ₹{expected:.2f})"
+                f"moved to PP TRUEUP ({n:g} × {tu_rate:.2f} = ₹{found_val:.2f})"
                 f" / true-up {found_key} నుండి PP TRUEUP కి మార్చాం"
             )
 
-    # If FY units were read but the amount is missing or 0, recompute
-    # units × official paise (30p in Nov 2026, 50p from December) — unless
-    # the printed total already matches with a zero true-up.
+    # If the printed FY quantum was read but the amount is missing or 0,
+    # recompute printed quantum × the date's official rate — only when the
+    # bill date pins a single rate, and unless the printed total already
+    # matches with a zero true-up. No quantum → nothing is invented.
     t = _num(b.get("trueup_charges"))
     n = _num(b.get("trueup_units"))
-    if n is not None and n > 0 and (t is None or abs(t) < 0.005):
-        try:
-            from tariff import trueup_rate_for_bill_date
-            tu_rate = float(trueup_rate_for_bill_date(b.get("bill_date")))
-        except Exception:
-            tu_rate = 0.30
+    if n is not None and n > 0 and (t is None or abs(t) < 0.005) and len(allowed_rates) == 1:
+        tu_rate = allowed_rates[0]
         expected = round(float(n) * tu_rate, 2)
         printed_now = printed_bill_amount(b)
         trial_zero = dict(b)
@@ -552,22 +548,36 @@ def apply_post_ocr_corrections(bill: Dict[str, Any]) -> Tuple[Dict[str, Any], Li
     from thermal_repair import repair_thermal_label_shift, snap_arrears
     b = repair_thermal_label_shift(b, notes)
     b = snap_arrears(b, notes)
-    # Snap a 5–10 paise true-up OCR slip to N × official rate when N is known.
+    # Snap a 5–10 paise true-up OCR slip to N × official rate when N is known
+    # (single-line bills only; multi-FY items are validated per line below).
     n = _num(b.get("trueup_units"))
     t = _num(b.get("trueup_charges"))
-    if n and t is not None and n > 0:
-        try:
-            from tariff import trueup_rate_for_bill_date
-            rate = float(trueup_rate_for_bill_date(b.get("bill_date")))
-        except Exception:
-            rate = 0.30
-        expected = round(n * rate, 2)
-        if 0.005 < abs(t - expected) <= 0.10:
-            b["trueup_charges"] = expected
-            notes.append(
-                f"auto-correct chesam: true-up ₹{t:.2f} snapped to ₹{expected:.2f} "
-                f"({n:g} × {rate:.2f}) / ట్రూ-అప్ పైసలు సరిచేసాం"
-            )
+    multi = isinstance(b.get("trueup_items"), list) and len(b.get("trueup_items")) > 1
+    if n and t is not None and n > 0 and not multi:
+        from tariff import trueup_allowed_rates as _tar
+        for rate in _tar(b.get("bill_date")):
+            expected = round(n * rate, 2)
+            if 0.005 < abs(t - expected) <= 0.10:
+                b["trueup_charges"] = expected
+                notes.append(
+                    f"auto-correct chesam: true-up ₹{t:.2f} snapped to ₹{expected:.2f} "
+                    f"({n:g} × {rate:.2f}) / ట్రూ-అప్ పైసలు సరిచేసాం"
+                )
+                break
+    # Keep a per-FY item list in sync with the (possibly corrected) aggregate.
+    if not multi:
+        n = _num(b.get("trueup_units"))
+        t = _num(b.get("trueup_charges"))
+        if (n and n > 0) or (t and abs(t) >= 0.005):
+            fy = None
+            if isinstance(b.get("trueup_items"), list) and b.get("trueup_items"):
+                fy = (b["trueup_items"][0] or {}).get("fy")
+            b["trueup_items"] = [{"fy": fy or "2022-23", "units": n, "amount": t}]
+        else:
+            b["trueup_items"] = None
+    if b.get("trueup_items"):
+        from tariff import normalize_trueup_items as _nti
+        b["trueup_items"] = _nti(b)
 
     # ------------------------------------------------------------------
     # 6c. Canonical category slab (drop title leaks / bare "DOMESTIC")

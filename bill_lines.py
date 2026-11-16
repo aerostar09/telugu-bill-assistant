@@ -38,20 +38,20 @@ HEADER_KEYS = (
     "bill_date", "due_date", "disc_date", "last_paid_date",
 )
 
-# Schema keys in official thermal order (nullable). Identity fields stay last
-# and must never be shown on the receipt or in a share card.
+# Schema keys in official thermal order (nullable). No identity fields
+# (name / service number / address) are extracted at all.
 SCHEMA_KEYS = [
     "discom", "category", "contracted_load_kw", "phase", "bill_date",
     "prev_reading", "present_reading", "prev_reading_date", "present_reading_date",
     "units", "days", "recorded_md",
     "energy_charges", "fixed_charges", "customer_charges", "electricity_duty",
-    "interest_on_ed", "surcharge", "trueup_charges", "trueup_units",
+    "interest_on_ed", "surcharge", "trueup_charges", "trueup_units", "trueup_items",
     "fsa_fca", "subsidy", "adjustment", "interest_on_cd", "loss_gain",
     "bill_amount", "arrears_as_on", "arrears_after", "arrears",
     "acd_due", "acd_surcharge", "total_due",
     "due_date", "disc_date", "last_paid_date",
     "average_month_units", "unit_history",
-    "usc_no", "is_electricity_bill", "image_quality",
+    "is_electricity_bill", "image_quality",
 ]
 
 

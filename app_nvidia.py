@@ -174,7 +174,7 @@ def generate_telugu_explanation_sarvam(b: Dict[str, Any]) -> str:
     if not key:
         raise RuntimeError("SARVAM_API_KEY missing")
     slim_keys = [
-        "discom", "usc_no", "category", "contracted_load_kw", "prev_reading", "present_reading",
+        "discom", "category", "contracted_load_kw", "prev_reading", "present_reading",
         "units", "days", "energy_charges", "fixed_charges", "customer_charges", "electricity_duty",
         "interest_on_ed", "surcharge", "trueup_charges", "trueup_units", "fsa_fca", "subsidy",
         "adjustment", "loss_gain", "bill_amount", "due_date",

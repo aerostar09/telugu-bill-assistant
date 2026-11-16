@@ -5,9 +5,13 @@ Lakshmi's Nov 2026 bill. Pro-rating of slab thresholds by days/30 is
 OPTIONAL and OFF by default, because the real Nov bill (154 units, 31 days)
 uses unprorated 100/200 thresholds (energy = 100×3.40 + 54×4.80 = ₹599.20).
 
-True-up (PP cost adjustment) is 30p/unit on Nov 2026 bills and 50p/unit
-thereafter, applied to FY 2022-23 true-up units printed on the bill
-(NOT this month's consumption).
+True-up: TGERC order dated 05.10.2026 (PP true-up FY 2022-23 + revenue
+true-up FY 2023-24), para 12(c)-(j). The monthly quantum is 1/12 of the
+connection's FY consumption and is PRINTED on the bill's true-up line; the
+rate is Rs 0.30/unit for the first month (Nov 2026 CC bills) and Rs 0.50/unit
+thereafter. Recovery goes to FY 2022-23 first, then FY 2023-24; a month that
+covers both years shows one line per FY. We never derive the quantum from
+this month's consumption, and never invent a missing line.
 """
 from __future__ import annotations
 
@@ -218,14 +222,138 @@ def parse_bill_date(value: Any) -> Optional[date]:
     return None
 
 
-def trueup_rate_for_bill_date(bill_date: Any) -> float:
-    """30p on Nov 2026 bills; 50p from Dec 2026 onward. Unknown date → 30p (current)."""
+TRUEUP_START_YM = (2026, 11)  # para 12(h): recovery starts with Nov 2026 CC bills
+TRUEUP_FYS = ("2022-23", "2023-24")
+TRUEUP_ITEM_TOL = 0.10  # rupees: printed amount vs printed units × rate
+
+
+def trueup_allowed_rates(bill_date: Any) -> Tuple[float, ...]:
+    """Rates a bill of this date may legitimately carry.
+
+    Nov 2026 → (0.30,); Dec 2026 onward → (0.50,); before Nov 2026 → ();
+    unknown / unparseable date → (0.30, 0.50) (accept either).
+    """
     dt = parse_bill_date(bill_date)
     if dt is None:
-        return TRUEUP_RATE_NOV_2026
-    if (dt.year, dt.month) <= (2026, 11):
-        return TRUEUP_RATE_NOV_2026
-    return TRUEUP_RATE_AFTER_NOV_2026
+        return (TRUEUP_RATE_NOV_2026, TRUEUP_RATE_AFTER_NOV_2026)
+    ym = (dt.year, dt.month)
+    if ym < TRUEUP_START_YM:
+        return ()
+    if ym == TRUEUP_START_YM:
+        return (TRUEUP_RATE_NOV_2026,)
+    return (TRUEUP_RATE_AFTER_NOV_2026,)
+
+
+def trueup_rate_for_bill_date(bill_date: Any) -> float:
+    """30p on Nov 2026 bills; 50p from Dec 2026 onward; 0 before Nov 2026.
+
+    Unknown date → 30p as a display default only; validation must use
+    trueup_allowed_rates / infer_trueup_rate, which accept either rate.
+    """
+    rates = trueup_allowed_rates(bill_date)
+    if not rates:
+        return 0.0
+    return rates[0]
+
+
+def infer_trueup_rate(units: Any, amount: Any, bill_date: Any = None,
+                      tol: float = TRUEUP_ITEM_TOL) -> Optional[float]:
+    """The allowed rate for this bill date that makes printed units × rate ≈ amount."""
+    n, a = _num(units), _num(amount)
+    if n is None or a is None or n <= 0:
+        return None
+    for r in trueup_allowed_rates(bill_date):
+        if abs(n * r - a) <= tol:
+            return r
+    return None
+
+
+def _fy_label(v: Any) -> Optional[str]:
+    if v is None:
+        return None
+    s = str(v)
+    m = re.search(r"(20)?(22|23)\s*[-/–]\s*(20)?(23|24)", s)
+    if m and int(m.group(4)) == int(m.group(2)) + 1:
+        return f"20{m.group(2)}-{m.group(4)}"
+    return None
+
+
+def normalize_trueup_items(bill: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """True-up lines as [{fy, units, rate, amount, valid}].
+
+    Uses the bill's `trueup_items` list when present; otherwise falls back to
+    the single legacy line (trueup_units / trueup_charges, FY 2022-23). Units
+    are only ever the quantum PRINTED on the line. Each item is valid when
+    printed units × an allowed rate for the bill date ≈ printed amount (a
+    printed rate, e.g. "@30P", must itself be allowed). Lines with no units
+    and no amount are dropped (nothing invented).
+    """
+    bdate = bill.get("bill_date")
+    raw = bill.get("trueup_items")
+    items_in: List[Dict[str, Any]] = []
+    if isinstance(raw, list) and raw:
+        for it in raw:
+            if isinstance(it, dict):
+                items_in.append(it)
+    else:
+        u, a = _num(bill.get("trueup_units")), _num(bill.get("trueup_charges"))
+        if (u is not None and u > 0) or (a is not None and abs(a) >= 0.005):
+            items_in.append({"fy": bill.get("trueup_fy") or "2022-23", "units": u, "amount": a})
+    out: List[Dict[str, Any]] = []
+    for idx, it in enumerate(items_in):
+        units = _num(it.get("units"))
+        if units is not None and units <= 0:
+            units = None
+        amount = _num(it.get("amount"))
+        if amount is not None and abs(amount) < 0.005:
+            amount = None
+        if units is None and amount is None:
+            continue
+        printed_rate = _num(it.get("rate"))
+        rp = _num(it.get("rate_paise"))
+        if printed_rate is None and rp is not None:
+            printed_rate = rp / 100.0
+        if printed_rate is not None and printed_rate > 1.5:  # "30" meant paise
+            printed_rate = printed_rate / 100.0
+        allowed = trueup_allowed_rates(bdate)
+        rate = None
+        if printed_rate is not None and any(abs(printed_rate - r) < 0.005 for r in allowed):
+            rate = round(printed_rate, 2)
+        inferred = infer_trueup_rate(units, amount, bdate)
+        if rate is None:
+            rate = inferred
+        valid = (
+            units is not None and amount is not None and rate is not None
+            and abs(units * rate - amount) <= TRUEUP_ITEM_TOL
+        )
+        fy = _fy_label(it.get("fy")) or (TRUEUP_FYS[idx] if idx < len(TRUEUP_FYS) else None)
+        out.append({
+            "fy": fy,
+            "units": units,
+            "rate": rate,
+            "amount": round(amount, 2) if amount is not None else None,
+            "valid": bool(valid),
+        })
+    return out
+
+
+def trueup_totals(items: List[Dict[str, Any]]) -> Tuple[Optional[float], Optional[float]]:
+    """(sum of printed units, sum of printed amounts) over the items; None if absent."""
+    us = [i["units"] for i in items if i.get("units") is not None]
+    am = [i["amount"] for i in items if i.get("amount") is not None]
+    return (
+        round(sum(us), 2) if us else None,
+        round(sum(am), 2) if am else None,
+    )
+
+
+def trueup_units_for_bill(bill: Dict[str, Any]) -> Optional[float]:
+    """Total printed true-up quantum (all FY lines). Never this month's units."""
+    items = normalize_trueup_items(bill)
+    u, _ = trueup_totals(items)
+    if u is None:
+        return None
+    return u
 
 
 def trueup_rate_for_next_bill(bill_date: Any) -> float:
@@ -352,7 +480,7 @@ def jump_breakdown(
         prev["electricity_duty"] = electricity_duty(prev_units)
         prev_was_computed = True
     if _num(prev.get("trueup_charges")) is None:
-        tu_u = _num(prev.get("trueup_units"))
+        tu_u = trueup_units_for_bill(prev)
         prev["trueup_charges"] = trueup_charges(tu_u, prev.get("bill_date")) if tu_u else 0.0
 
     prev_energy = _line(prev, "energy_charges")
@@ -472,7 +600,7 @@ def cliff_warning(
     days = _num(bill.get("days"))
     load = _num(bill.get("contracted_load_kw")) or 1.0
     customer = _num(bill.get("customer_charges"))
-    trueup_u = _num(bill.get("trueup_units"))
+    trueup_u = trueup_units_for_bill(bill)
     bdate = bill.get("bill_date")
 
     def _tot(u: float, cat: str) -> float:
@@ -546,7 +674,7 @@ def estimate_next_with_trueup(
         + (_num(bill.get("customer_charges")) or 0)
         + (_num(bill.get("electricity_duty")) or 0)
     )
-    tu_units = _num(bill.get("trueup_units"))
+    tu_units = trueup_units_for_bill(bill)
     next_rate = trueup_rate_for_next_bill(bill.get("bill_date"))
     tu = trueup_charges(tu_units, rate=next_rate) if tu_units else 0.0
     total = round(est_energy + other + tu, 2)
@@ -564,3 +692,23 @@ def estimate_next_with_trueup(
             "excludes Delayed Payment Surcharge (assumes on-time payment)"
         ),
     }
+
+
+def trueup_item_formulas(bill: Dict[str, Any], rupee: str = "paise") -> List[str]:
+    """Per-FY formula strings from the PRINTED lines, e.g.
+    'FY 2022-23 96 యూనిట్లు × 30 పైసలు = ₹28.80'. Empty if no line was read.
+    rupee='rs' writes the rate as ₹0.30 instead of 30 పైసలు."""
+    out: List[str] = []
+    for it in normalize_trueup_items(bill):
+        fy = it.get("fy") or "2022-23"
+        u, r, a = it.get("units"), it.get("rate"), it.get("amount")
+        if u is None or a is None:
+            if a is not None:
+                out.append(f"FY {fy} ₹{a:,.2f}")
+            continue
+        if r is None:
+            out.append(f"FY {fy} {int(round(u))} యూనిట్లు = ₹{a:,.2f}")
+            continue
+        rate_s = f"₹{r:.2f}" if rupee == "rs" else f"{int(round(r * 100))} పైసలు"
+        out.append(f"FY {fy} {int(round(u))} యూనిట్లు × {rate_s} = ₹{a:,.2f}")
+    return out

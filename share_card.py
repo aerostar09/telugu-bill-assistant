@@ -218,13 +218,13 @@ def short_share_text(
 
     tu_u = _amt(bill.get("trueup_units"))
     if tu is not None and abs(tu) >= 0.005:
-        rate = float(trueup_rate_for_bill_date(bill.get("bill_date")))
+        from tariff import trueup_item_formulas
         nxt = float(trueup_rate_for_next_bill(bill.get("bill_date")))
-        paise = int(round(rate * 100))
         nxt_paise = int(round(nxt * 100))
-        if tu_u and tu_u > 0:
+        formulas = trueup_item_formulas(bill) if tu_u and tu_u > 0 else []
+        if formulas:
             lines.append(
-                f"• ట్రూ-అప్: FY 2022-23 {int(tu_u)} యూనిట్లు × {paise} పైసలు = {_rs(tu)} "
+                f"• ట్రూ-అప్: {'; '.join(formulas)} "
                 f"(ఈ నెల వాడకం కాదు). వచ్చే నెల {nxt_paise} పైసలు/యూనిట్."
             )
         else:

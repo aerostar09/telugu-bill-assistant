@@ -9,7 +9,6 @@ def nov_bill(**overrides):
     """Anonymised line items matching a printed 154-unit 1B(i) bill (no identity fields)."""
     b = {
         "discom": "TGSPDCL",
-        "usc_no": None,
         "category": "1B(i)",
         "contracted_load_kw": 3.0,
         "bill_date": "06/11/2026",
@@ -41,7 +40,6 @@ def oct_bill_82u(**overrides):
     """Anonymised 82-unit 1A bill with a real ₹10 DPS."""
     b = {
         "discom": "TGSPDCL",
-        "usc_no": None,
         "category": "1A",
         "contracted_load_kw": 3.0,
         "bill_date": "04/02/2026",

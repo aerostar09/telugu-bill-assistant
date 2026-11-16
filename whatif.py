@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from typing import Any, Dict, Optional
 
-from tariff import quote_bill, trueup_rate_for_next_bill, trueup_rate_for_bill_date, infer_category, customer_charges_for_units
+from tariff import trueup_units_for_bill, quote_bill, trueup_rate_for_next_bill, trueup_rate_for_bill_date, infer_category, customer_charges_for_units
 from terms import TARIFF_VERSION, t
 
 
@@ -37,7 +37,7 @@ def whatif_for_units(
         days=days,
         category=None,
         customer_charges=customer_charges_for_units(u),
-        trueup_units=_num(bill.get("trueup_units")),
+        trueup_units=trueup_units_for_bill(bill),
         trueup_rate=rate,
         pro_rate=False,
     )

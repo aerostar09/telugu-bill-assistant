@@ -37,6 +37,19 @@ class ScenarioATests(unittest.TestCase):
         self.assertIn("FY 2022-23", sc["telugu"])
         self.assertIn("నమూనా", sc["telugu"])
 
+    def test_trueup_uses_printed_fy_quantum_not_consumption(self):
+        # 215 units consumed, but true-up = sample printed FY quantum × 30p (Nov 2026)
+        sc = get_scenario("A")
+        self.assertNotEqual(sc["quote"]["trueup_charges"], round(215 * 0.30, 2))
+        self.assertEqual(sc["bill"]["trueup_units"], SAMPLE_TRUEUP_UNITS)
+        self.assertEqual(sc["bill"]["trueup_charges"], round(SAMPLE_TRUEUP_UNITS * 0.30, 2))
+
+    def test_december_dated_scenario_bill_uses_50p(self):
+        q = quote_bill(215, load_kw=SAMPLE_LOAD_KW, days=SAMPLE_DAYS,
+                       bill_date="06/12/2026", trueup_units=SAMPLE_TRUEUP_UNITS)
+        self.assertEqual(q["trueup_rate"], 0.50)
+        self.assertEqual(q["trueup_charges"], 50.0)
+
     def test_gruha_jyothi_loses_benefit_above_200(self):
         sc = get_scenario("A")
         self.assertIn("మొత్తం బిల్లు", sc["telugu"])
@@ -74,6 +87,14 @@ class ScenarioCTests(unittest.TestCase):
         self.assertIn("not a claim that the meter is faulty", sc["english"].lower())
         self.assertIn("1912", sc["telugu"])
         self.assertIn("87124 41912", sc["telugu"])
+
+    def test_october_prev_bill_has_no_trueup(self):
+        sc = get_scenario("C")
+        self.assertIsNone(sc["prev_bill"]["trueup_units"])
+        self.assertIsNone(sc["prev_bill"]["trueup_charges"])
+        self.assertEqual(sc["quote_prev"]["trueup_charges"], 0.0)
+        # Same printed FY quantum in Nov at 650 units → still 100 × 30p
+        self.assertEqual(sc["quote"]["trueup_charges"], 30.0)
 
     def test_helper_threshold(self):
         self.assertFalse(is_usage_anomaly(200, [100])["flagged"])  # 2.0x, not >2.5

@@ -38,7 +38,6 @@ def _domestic(**overrides):
     total = float(overrides.get("total_due", round(bill_amount + arrears + acd, 2)))
     b = {
         "discom": "TGSPDCL",
-        "usc_no": None,
         "category": q["category"],
         "contracted_load_kw": load,
         "bill_date": bill_date,

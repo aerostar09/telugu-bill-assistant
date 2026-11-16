@@ -389,11 +389,11 @@ def render_calculation_section(
                 rows.append({"Field": k, "Value": str(bill[k])})
         if rows:
             st.table(rows)
-        redacted = dict(bill)
-        if redacted.get("usc_no"):
-            redacted["usc_no"] = "••••••••"
+        # Identity fields are never extracted; drop any that a model adds anyway.
+        _pii = ("usc", "service", "name", "addr", "mobile", "phone", "email", "meter_no")
+        redacted = {k: v for k, v in bill.items() if not any(p in str(k).lower() for p in _pii)}
         redacted.pop("unit_history", None)
-        st.caption("Raw JSON (USC redacted)")
+        st.caption("Raw JSON (no identity fields)")
         st.json(redacted)
         if result:
             attempts = result.get("attempts") or []

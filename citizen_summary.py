@@ -53,14 +53,13 @@ def trueup_explain_te(bill: Optional[Dict[str, Any]] = None) -> str:
     """Short distinct true-up explanation (never repeats the title)."""
     bill = bill or {}
     tu_u = _amt(bill.get("trueup_units"))
-    try:
-        from tariff import trueup_rate_for_bill_date
-        rate = float(trueup_rate_for_bill_date(bill.get("bill_date")))
-    except Exception:
-        rate = 0.30
-    paise = int(round(rate * 100))
-    if tu_u is not None and tu_u > 0:
-        return f"2022-23 బాకీ, {int(tu_u)} యూనిట్లు × {paise} పైసలు"
+    from tariff import normalize_trueup_items
+    items = [i for i in normalize_trueup_items(bill) if i.get("units") and i.get("rate")]
+    if tu_u is not None and tu_u > 0 and items:
+        return "; ".join(
+            f"{i['fy'] or '2022-23'} బాకీ, {int(round(i['units']))} యూనిట్లు × {int(round(i['rate'] * 100))} పైసలు"
+            for i in items
+        )
     return "పాత సంవత్సరం పవర్ ఖర్చు సర్దుబాటు"
 
 

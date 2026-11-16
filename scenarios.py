@@ -44,7 +44,6 @@ def is_usage_anomaly(
 def _bill_from_quote(q: Dict[str, Any], **extra: Any) -> Dict[str, Any]:
     bill = {
         "discom": "TGSPDCL",
-        "usc_no": None,
         "category": q["category"],
         "contracted_load_kw": SAMPLE_LOAD_KW,
         "phase": "1",
@@ -190,8 +189,7 @@ def scenario_c() -> Dict[str, Any]:
         load_kw=SAMPLE_LOAD_KW,
         days=SAMPLE_DAYS,
         bill_date="06/10/2026",
-        trueup_units=SAMPLE_TRUEUP_UNITS,
-        trueup_rate=0.0,  # before Nov 2026 true-up window
+        trueup_units=None,  # Oct 2026 bill: no true-up line (recovery starts Nov 2026)
         pro_rate=False,
     )
     q = quote_bill(
@@ -204,9 +202,9 @@ def scenario_c() -> Dict[str, Any]:
     )
     flag = is_usage_anomaly(curr_u, [prev_u])
     bill = _bill_from_quote(q, trueup_units=SAMPLE_TRUEUP_UNITS)
-    prev_bill = _bill_from_quote(q_prev, trueup_units=SAMPLE_TRUEUP_UNITS, bill_date="06/10/2026", due_date="20/10/2026")
-    # October bill should not carry Nov 30p if we set rate 0
-    prev_bill["trueup_charges"] = q_prev["trueup_charges"]
+    prev_bill = _bill_from_quote(q_prev, trueup_units=None, bill_date="06/10/2026", due_date="20/10/2026")
+    # October bill carries no true-up line at all (nothing invented)
+    prev_bill["trueup_charges"] = None
     te = (
         f"సీనారియో C (నమూనా): గత నెల {int(prev_u)} యూనిట్లు → ఈ నెల {int(curr_u)} యూనిట్లు "
         f"(సుమారు {flag['ratio']} రెట్లు, సగటు {flag['recent_average']}). "

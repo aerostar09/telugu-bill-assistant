@@ -18,7 +18,7 @@ Rules:
   4) Electricity Duty
   5) Interest on ED
   6) Surcharge  (Delayed Payment Surcharge / DPS only. If the line is 0.00, surcharge is 0. Do NOT copy PP TRUEUP into surcharge.)
-  7) PP TRUEUP Charges  (FY-2022-23 units × paise, e.g. 96 × 30P = 28.80). trueup_charges = that amount; trueup_units = the units on that same line.
+  7) PP TRUEUP Charges  (printed as e.g. "PP TRUEUP Charges 28.80" then "FY-2022-23 Units 96 @30P"). Put EACH printed true-up line in trueup_items as {"fy": "2022-23" or "2023-24", "units": the units printed on that line, "rate_paise": the printed @ paise, "amount": that line's amount}. A bill may print one line or two (one per FY). trueup_charges = sum of the amounts; trueup_units = sum of the printed units. These units are NOT this month's consumption. If no true-up line is printed, use null.
   8) FSA/FCA Charges
   9) Subsidy
   10) Adjustment
@@ -76,6 +76,7 @@ Use null for any field that is not clearly readable — do NOT guess or invent.
   "surcharge": number|null,
   "trueup_charges": number|null,
   "trueup_units": number|null,
+  "trueup_items": [{"fy": string, "units": number|null, "rate_paise": number|null, "amount": number|null}]|null,
   "fsa_fca": number|null,
   "subsidy": number|null,
   "adjustment": number|null,
@@ -93,7 +94,6 @@ Use null for any field that is not clearly readable — do NOT guess or invent.
   "last_paid_date": string|null,
   "average_month_units": number|null,
   "unit_history": [{"year": number, "month": number, "units": number, "estimated": boolean}]|null,
-  "usc_no": string|null,
   "is_electricity_bill": boolean,
   "image_quality": "clear"|"cropped"|"crumpled"|"blurry"|"unknown"
 }
@@ -106,13 +106,13 @@ BILL_SCHEMA_KEYS = [
     "prev_reading", "present_reading", "prev_reading_date", "present_reading_date",
     "units", "days", "recorded_md",
     "energy_charges", "fixed_charges", "customer_charges", "electricity_duty",
-    "interest_on_ed", "surcharge", "trueup_charges", "trueup_units",
+    "interest_on_ed", "surcharge", "trueup_charges", "trueup_units", "trueup_items",
     "fsa_fca", "subsidy", "adjustment", "interest_on_cd", "loss_gain",
     "bill_amount", "arrears_as_on", "arrears_after", "arrears",
     "acd_due", "acd_surcharge", "total_due",
     "due_date", "disc_date", "last_paid_date",
     "average_month_units", "unit_history",
-    "usc_no", "is_electricity_bill", "image_quality",
+    "is_electricity_bill", "image_quality",
 ]
 
 
@@ -130,18 +130,23 @@ def run_self_checks(b: Dict[str, Any]) -> Dict[str, Any]:
     if printed is not None:
         sum_eq_bill = abs(sum_calc - float(printed)) <= 1.0
 
-    trueup_eq_30p = None
-    if b.get("trueup_units") is not None and b.get("trueup_charges") is not None:
-        trueup_eq_30p = abs(b["trueup_charges"] - b["trueup_units"] * 0.30) <= 0.05
+    # Each printed true-up line: printed FY quantum × the rate allowed for the
+    # bill date (Nov 2026 → 30p, Dec 2026+ → 50p, unknown date → either).
+    from tariff import normalize_trueup_items
+    trueup_eq_rate = None
+    tu_items = [i for i in normalize_trueup_items(b)
+                if i.get("units") is not None and i.get("amount") is not None]
+    if tu_items:
+        trueup_eq_rate = all(i["valid"] for i in tu_items)
 
-    failures = [v for v in (units_eq_delta, sum_eq_bill, trueup_eq_30p) if v is False]
+    failures = [v for v in (units_eq_delta, sum_eq_bill, trueup_eq_rate) if v is False]
     ok = len(failures) == 0
     consumer_ok = sum_eq_bill is True
     return {
         "units_eq_delta": units_eq_delta,
         "sum_calc": sum_calc if b.get("bill_amount") is not None else None,
         "sum_eq_bill": sum_eq_bill,
-        "trueup_eq_30p": trueup_eq_30p,
+        "trueup_eq_rate": trueup_eq_rate,
         "ok": ok,
         "consumer_ok": consumer_ok,
         "message_te": None if consumer_ok else "మీ బిల్లు లో ఒక్క నంబర్ మ్యాచ్ అవ్వట్లేదు, CSC/1912 కి కాల్ చేయండి.",
@@ -219,7 +224,7 @@ def run_all_checks(b: Dict[str, Any]) -> Dict[str, Any]:
     sc = run_self_checks(b)
     ls = run_label_shift_checks(b)
     fail_keys = []
-    for k in ("units_eq_delta", "sum_eq_bill", "trueup_eq_30p"):
+    for k in ("units_eq_delta", "sum_eq_bill", "trueup_eq_rate"):
         if sc.get(k) is False:
             fail_keys.append(k)
     for k in ("customer_typical", "ed_vs_units", "energy_gt_fixed"):

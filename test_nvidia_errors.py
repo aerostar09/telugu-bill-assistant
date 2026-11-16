@@ -95,7 +95,7 @@ class FallbackOnTimeoutTests(unittest.TestCase):
                 raise NvidiaCallError("timeout", "NVIDIA timeout after 60.00s", elapsed_s=60, model=model)
             # fallback: return a barely valid bill so pipeline can keep it
             raw = {
-                "discom": "TGSPDCL", "usc_no": None, "category": "1B(i)",
+                "discom": "TGSPDCL", "category": "1B(i)",
                 "contracted_load_kw": 3, "phase": "1", "bill_date": "06/11/2026",
                 "prev_reading": 100, "present_reading": 254, "units": 154,
                 "days": 31, "energy_charges": 599.20, "fixed_charges": 30,
@@ -196,7 +196,7 @@ class ThinkingAndCacheTests(unittest.TestCase):
         def fake_once(image_bytes, mime="image/jpeg", prompt=None, model=None, timeout=None):
             calls["n"] += 1
             raw = {
-                "discom": "TGSPDCL", "usc_no": None, "category": "1A",
+                "discom": "TGSPDCL", "category": "1A",
                 "contracted_load_kw": 3, "phase": "1", "bill_date": "04/02/2026",
                 "prev_reading": 100, "present_reading": 182, "units": 82,
                 "days": 30, "energy_charges": 199, "fixed_charges": 30,
