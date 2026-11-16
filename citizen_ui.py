@@ -119,7 +119,7 @@ def render_main_understand(
     render_match_banner(model)
     render_gruha_jyothi_note(model)
     from forecast import consumer_forecast_range, format_rupee_range
-    render_receipt_card(model["bill"])
+    render_receipt_card(model["bill"], gj_mode=(model.get("gruha_jyothi") or {}).get("mode"))
     tu = (model.get("bill") or {}).get("trueup_charges")
     try:
         tu_n = float(tu) if tu is not None else 0.0

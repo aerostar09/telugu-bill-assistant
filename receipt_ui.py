@@ -90,7 +90,24 @@ def render_units_bar(bill: Dict[str, Any]) -> None:
     )
 
 
-def render_receipt_card(bill: Dict[str, Any], formulas: Optional[Dict[str, str]] = None) -> None:
+GJ_WITHOUT_SCHEME_LABEL_TE = "స్కీమ్ లేకపోతే చెల్లింపు"
+
+
+def receipt_pay_label(bill: Dict[str, Any], gj_mode: Optional[str] = None) -> str:
+    """Receipt total label. In the Gruha Jyothi ₹0 view (ticked, ≤200 units,
+    no printed subsidy) the printed total means 'without the scheme'."""
+    if gj_mode == "free":
+        return GJ_WITHOUT_SCHEME_LABEL_TE
+    if effective_arrears(bill) >= 1.0 and bill.get("total_due") is not None:
+        return "మొత్తం చెల్లింపు (Total Due)"
+    return "మొత్తం చెల్లింపు"
+
+
+def render_receipt_card(
+    bill: Dict[str, Any],
+    formulas: Optional[Dict[str, str]] = None,
+    gj_mode: Optional[str] = None,
+) -> None:
     import streamlit as st
     rows = nonzero_rows(bill)
     parts = ['<div class="receipt" data-testid="receipt-card">']
@@ -108,9 +125,7 @@ def render_receipt_card(bill: Dict[str, Any], formulas: Optional[Dict[str, str]]
             f'<div class="rc-formula">{formula}</div></details>'
         )
     pay = payable_amount(bill)
-    pay_label = "మొత్తం చెల్లింపు"
-    if effective_arrears(bill) >= 1.0 and bill.get("total_due") is not None:
-        pay_label = "మొత్తం చెల్లింపు (Total Due)"
+    pay_label = receipt_pay_label(bill, gj_mode)
     if pay is not None:
         parts.append(
             f'<div class="rc-total" data-testid="receipt-total">'

@@ -73,6 +73,25 @@ class ViewTests(unittest.TestCase):
         self.assertEqual(v["mode"], "unknown")
 
 
+class ReceiptLabelTests(unittest.TestCase):
+    def test_free_view_relabels_total_as_without_scheme(self):
+        from receipt_ui import receipt_pay_label
+        b = small_bill()
+        mode = gruha_jyothi_view(b, True)["mode"]
+        self.assertEqual(receipt_pay_label(b, mode), "స్కీమ్ లేకపోతే చెల్లింపు")
+
+    def test_other_cases_keep_normal_label(self):
+        from receipt_ui import receipt_pay_label
+        b = small_bill()
+        self.assertEqual(receipt_pay_label(b, None), "మొత్తం చెల్లింపు")
+        over = small_bill(units=201, bill_amount=1100.0, total_due=1100.0)
+        self.assertEqual(receipt_pay_label(over, gruha_jyothi_view(over, True)["mode"]), "మొత్తం చెల్లింపు")
+        printed = small_bill(subsidy=757.0, bill_amount=0.0, total_due=0.0)
+        self.assertEqual(receipt_pay_label(printed, gruha_jyothi_view(printed, True)["mode"]), "మొత్తం చెల్లింపు")
+        arr = small_bill(arrears=120.0, total_due=877.0)
+        self.assertEqual(receipt_pay_label(arr, None), "మొత్తం చెల్లింపు (Total Due)")
+
+
 class ForecastWarningTests(unittest.TestCase):
     def test_warns_196_to_200(self):
         for u in (196, 198.4, 200):
