@@ -52,6 +52,9 @@ from share_card import render_share_tab
 from tariff import estimate_next_with_trueup
 from draft_features import trueup_explainer, jump_card_text, cliff_card_text
 from demo_data import lakshmi_demo_bundle
+from gruha_jyothi import (
+    GJ_CHECKBOX_LABEL_TE, GJ_CHECKBOX_HINT_EN, gruha_jyothi_view, gruha_jyothi_forecast_warning,
+)
 from terms import t
 from citizen_ui import (
     render_main_understand,
@@ -646,6 +649,8 @@ def render_citizen_tab(demo: bool, use_sarvam: bool) -> None:
             key="bill_upload",
         )
         st.caption(t("upload_hint"))
+        st.checkbox(GJ_CHECKBOX_LABEL_TE, key="gj_scheme")
+        st.caption(GJ_CHECKBOX_HINT_EN)
         c1, c2 = st.columns(2)
         with c1:
             clicked = st.button(
@@ -682,6 +687,8 @@ def render_citizen_tab(demo: bool, use_sarvam: bool) -> None:
     else:
         st.markdown('<div class="upload-panel">', unsafe_allow_html=True)
         st.caption("డెమో మోడ్ ఆన్ — అసలు బిల్లు ఫోటో అవసరం లేదు, NVIDIA కాల్ లేదు, PII లేదు.")
+        st.checkbox(GJ_CHECKBOX_LABEL_TE, key="gj_scheme")
+        st.caption(GJ_CHECKBOX_HINT_EN)
         c1, c2 = st.columns(2)
         with c1:
             st.button(
@@ -732,6 +739,11 @@ def render_citizen_tab(demo: bool, use_sarvam: bool) -> None:
     if model is None:
         model = build_dashboard_model(result["bill"], result.get("prev_bill"), result.get("checks"))
         result["model"] = model
+    gj_ticked = bool(st.session_state.get("gj_scheme"))
+    model["gruha_jyothi"] = gruha_jyothi_view(result["bill"], gj_ticked)
+    model["gj_forecast_warn"] = gruha_jyothi_forecast_warning(
+        result["bill"], model.get("forecast"), gj_ticked
+    )
 
     tab_u, tab_c, tab_e, tab_h, tab_s = st.tabs([
         t("nav_understand"),

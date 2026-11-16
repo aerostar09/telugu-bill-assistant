@@ -25,6 +25,9 @@ def render_hero_card(model: Dict[str, Any], corrections: Optional[List[str]] = N
     due = bill.get("due_date") or "—"
     unit_bit = f"{int(units)} {t('units')}" if units is not None else ""
     payable = payable_amount(bill)
+    gj = model.get("gruha_jyothi") or {}
+    if gj.get("mode") == "free":
+        payable = gj.get("payable")
     pill = ""
     if conf.get("show_on_hero") and conf.get("label_te"):
         pill = (
@@ -58,6 +61,24 @@ def render_match_banner(model: Dict[str, Any]) -> None:
             f'<div class="verdict verdict-bad verdict-sm" data-testid="trust-verdict">{msg}</div>',
             unsafe_allow_html=True,
         )
+
+
+def render_gruha_jyothi_note(model: Dict[str, Any]) -> None:
+    """Gruha Jyothi checkbox outcome (printed subsidy wins; see gruha_jyothi.py)."""
+    import streamlit as st
+    gj = model.get("gruha_jyothi")
+    if not gj:
+        return
+    parts = [gj.get("note_te") or ""]
+    if gj.get("trueup_note_te"):
+        parts.append(gj["trueup_note_te"])
+    if gj.get("check_te"):
+        parts.append(gj["check_te"])
+    text = " ".join(p for p in parts if p)
+    if gj.get("mode") == "over":
+        st.warning(text)
+    else:
+        st.info(text)
 
 
 def render_top_reasons(model: Dict[str, Any], max_n: int = 3) -> List[Dict[str, Any]]:
@@ -96,6 +117,7 @@ def render_main_understand(
 
     render_hero_card(model, corrections)
     render_match_banner(model)
+    render_gruha_jyothi_note(model)
     from forecast import consumer_forecast_range, format_rupee_range
     render_receipt_card(model["bill"])
     tu = (model.get("bill") or {}).get("trueup_charges")
@@ -116,6 +138,8 @@ def render_main_understand(
             f' (ఇదే వాడకం ఉంటే)</div>',
             unsafe_allow_html=True,
         )
+    if model.get("gj_forecast_warn"):
+        st.warning(model["gj_forecast_warn"])
     reasons = render_top_reasons(model, max_n=3)
     spoken = voice_text or build_voice_summary(
         model["bill"], reasons=reasons, forecast_range=rng
