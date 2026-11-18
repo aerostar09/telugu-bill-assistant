@@ -63,6 +63,50 @@ class UsageJumpTests(unittest.TestCase):
         s = get_scenario("C")
         self.assertIsNotNone(build_dashboard_model(s["bill"], s["prev_bill"], None)["usage_jump"])
 
+    def test_57_day_132_units_vs_avg_72_is_not_a_jump(self):
+        # 132 units / 57 days ≈ 69.5 per 30 days, at or below the printed average.
+        self.assertIsNone(usage_jump_alert(
+            lt_notice(units=132, days=57, average_month_units=72)
+        ))
+
+    def test_30_day_154_units_vs_avg_72_still_alerts(self):
+        a = usage_jump_alert(lt_notice(units=154, days=30, average_month_units=72))
+        self.assertIsNotNone(a)
+        self.assertFalse(a["normalised"])
+        self.assertIn("ఈ నెల 154 యూనిట్లు", a["text_te"])
+        self.assertNotIn("నెలకు సుమారు", a["text_te"])
+
+    def test_60_day_300_units_vs_avg_72_still_alerts(self):
+        # 300 / 60 * 30 = 150 per month: still a jump vs 72.
+        a = usage_jump_alert(lt_notice(units=300, days=60, average_month_units=72))
+        self.assertIsNotNone(a)
+        self.assertTrue(a["normalised"])
+        self.assertEqual(a["monthly_units"], 150.0)
+        self.assertIn("60 రోజులకు 300 యూనిట్లు", a["text_te"])
+        self.assertIn("నెలకు సుమారు 150 యూనిట్లు", a["text_te"])
+
+    def test_missing_days_keeps_raw_units(self):
+        # Same 132 vs 72, but no period to normalise — current behaviour stands.
+        self.assertIsNotNone(usage_jump_alert(
+            lt_notice(units=132, days=None, average_month_units=72)
+        ))
+
+    def test_long_prev_bill_is_normalised_in_average(self):
+        # Prev 144 units over 60 days is ~72/month; 154 in 30 days is still a jump.
+        a = usage_jump_alert(
+            lt_notice(units=154, days=30),
+            None,
+            {"units": 144, "days": 60},
+        )
+        self.assertIsNotNone(a)
+        self.assertEqual(a["past_average"], 72.0)
+
+    def test_long_history_row_is_normalised_in_average(self):
+        h = [{"year": 2026, "month": 8, "units": 144, "days": 60, "estimated": False}]
+        a = usage_jump_alert(lt_notice(units=154, days=30), h)
+        self.assertIsNotNone(a)
+        self.assertEqual(a["past_average"], 72.0)
+
 
 class BannerWordingTests(unittest.TestCase):
     def test_banner_is_short_and_has_no_rupee_tolerance(self):
