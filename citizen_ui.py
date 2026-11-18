@@ -223,6 +223,8 @@ def render_history_chart(model: Dict[str, Any]) -> None:
     if not hist:
         st.info("ఇంకా చరిత్ర లేదు.")
         return
+    if sum(1 for p in hist if not p.get("estimated")) <= 1:
+        st.caption("📌 ఇప్పుడు ఈ ఒక్క బిల్లు మాత్రమే ఉంది. కింద గత బిల్లుల ఫోటోలు పెడితే నెల నెలా ట్రెండ్ కనిపిస్తుంది.")
     rows = []
     for p in hist:
         rows.append({
@@ -331,9 +333,9 @@ def render_estimate_section(model: Dict[str, Any]) -> None:
         st.info("అంచనాకు ఇంకా చాలిన డేటా లేదు.")
     if fc:
         c1, c2, c3 = st.columns(3)
-        c1.metric("తక్కువ యూనిట్లు", f"{fc['low']:g}")
-        c2.metric("అవకాశం", f"{fc['likely']:g}")
-        c3.metric("ఎక్కువ యూనిట్లు", f"{fc['high']:g}")
+        c1.metric("తక్కువ యూనిట్లు", f"{int(round(fc['low']))}")
+        c2.metric("అవకాశం", f"{int(round(fc['likely']))}")
+        c3.metric("ఎక్కువ యూనిట్లు", f"{int(round(fc['high']))}")
         bt = model.get("backtest") or {}
         if (model.get("history_meta") or {}).get("show_backtest") and bt.get("n"):
             st.caption(
@@ -360,7 +362,9 @@ def render_calculation_section(
     c2.metric(t("calculated"), _inr(pvc["calculated"]))
     c3.metric("తేడా", _inr(pvc["delta"], signed=True) if pvc["delta"] is not None else "—")
     if corrections:
-        st.info("సరిచేసినవి:\n\n- " + "\n- ".join(corrections))
+        st.caption("ℹ️ ఫోటోలో చిన్న అంకె తప్పులు కనిపించాయి — మీటర్ రీడింగ్‌లతో పోల్చి సరిచేశాం.")
+        with st.expander("సాంకేతిక వివరాలు / technical notes"):
+            st.markdown("- " + "\n- ".join(corrections))
     st.markdown("##### ఛార్జీల వివరాలు")
     cards = model.get("charges") or []
     if cards:

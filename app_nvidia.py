@@ -313,7 +313,8 @@ def render_draft_section(curr_bill: Dict[str, Any]) -> None:
         return
 
     if prev_pipe and prev_pipe.get("corrections"):
-        st.caption("గత బిల్లు auto-correct: " + " | ".join(prev_pipe["corrections"]))
+        with st.expander("గత బిల్లు — సాంకేతిక వివరాలు / technical notes"):
+            st.markdown("- " + "\n- ".join(prev_pipe["corrections"]))
 
     card = jump_card_text(prev_bill, curr_bill)
     if not card:
