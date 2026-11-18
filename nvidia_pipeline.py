@@ -511,6 +511,9 @@ def _cache_key(image_bytes: bytes) -> str:
     h = hashlib.sha256(image_bytes)
     if get_provider() != "nvidia":  # keep NVIDIA keys unchanged
         h.update(b"|provider=" + get_provider().encode())
+        # Prompt/schema changes (e.g. the GJS Subsidy fields) must not reuse
+        # extracts made with an older prompt.
+        h.update(b"|prompt=" + hashlib.sha256(VISION_PROMPT.encode()).hexdigest()[:12].encode())
     return h.hexdigest()
 
 

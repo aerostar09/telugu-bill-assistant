@@ -218,6 +218,59 @@ def reconcile_line_sum(bill: Dict[str, Any], notes: Optional[List[str]] = None) 
     return b, notes
 
 
+_GJS_ALIASES = ("gj_subsidy", "gruha_jyothi_subsidy", "gjs_subsidy_amount")
+_NET_ALIASES = ("net_bill", "net_bill_amt")
+
+
+def normalize_gjs_fields(bill: Dict[str, Any], notes: Optional[List[str]] = None) -> Tuple[Dict[str, Any], List[str]]:
+    """Gruha Jyothi slip lines (Bill Amount / GJS Subsidy -602 / Net Bill Amount 0).
+
+    * gjs_subsidy is stored POSITIVE (the slip prints it with a minus).
+    * gj_zero_bill_header is a strict bool.
+    * If the model put the scheme amount into the plain `subsidy` field
+      (subsidy == Bill Amount, and the charges already add up to Bill Amount
+      without it), move it to gjs_subsidy. Nothing is invented.
+    """
+    b = bill
+    notes = list(notes or [])
+    for a in _GJS_ALIASES:
+        if b.get("gjs_subsidy") is None and b.get(a) is not None:
+            b["gjs_subsidy"] = b.pop(a)
+    for a in _NET_ALIASES:
+        if b.get("net_bill_amount") is None and b.get(a) is not None:
+            b["net_bill_amount"] = b.pop(a)
+    g = _num(b.get("gjs_subsidy"))
+    if g is None or abs(g) < 0.005:
+        b["gjs_subsidy"] = None
+    else:
+        b["gjs_subsidy"] = round(abs(g), 2)
+    net = _num(b.get("net_bill_amount"))
+    b["net_bill_amount"] = None if net is None else round(net, 2)
+    hdr = b.get("gj_zero_bill_header")
+    if isinstance(hdr, str):
+        hdr = hdr.strip().lower() in ("true", "yes", "1")
+    b["gj_zero_bill_header"] = bool(hdr) if hdr is not None else False
+
+    sub = _num(b.get("subsidy"))
+    bill_amt = _num(b.get("bill_amount"))
+    if b["gjs_subsidy"] is None and sub is not None and bill_amt is not None and abs(sub) >= 1.0:
+        tmp = dict(b)
+        tmp["subsidy"] = 0.0
+        looks_gjs = (
+            abs(abs(sub) - bill_amt) <= 1.0
+            and abs(line_sum(tmp) - bill_amt) <= SUM_MATCH_TOL
+            and (b["gj_zero_bill_header"] or (b["net_bill_amount"] is not None and abs(b["net_bill_amount"]) <= 1.0))
+        )
+        if looks_gjs:
+            b["gjs_subsidy"] = round(abs(sub), 2)
+            b["subsidy"] = 0.0
+            notes.append(
+                f"auto-correct chesam: Gruha Jyothi subsidy ₹{abs(sub):.2f} moved from Subsidy to GJS Subsidy"
+                f" / గృహ జ్యోతి సబ్సిడీని సరైన లైన్‌లో పెట్టాం"
+            )
+    return b, notes
+
+
 def _leading_digit_variants(value: int) -> List[int]:
     s = str(int(abs(value)))
     if len(s) < 2:
@@ -235,6 +288,9 @@ def apply_post_ocr_corrections(bill: Dict[str, Any]) -> Tuple[Dict[str, Any], Li
     """Return a shallow-copied bill plus bilingual auto-correct notes."""
     b = dict(bill)
     notes: List[str] = []
+
+    # 0. Gruha Jyothi (GJS) lines: normalise sign / aliases first.
+    b, notes = normalize_gjs_fields(b, notes)
 
     # ------------------------------------------------------------------
     # 1. True-up (TGERC 05.10.2026, para 12(c)-(j)): printed FY quantum ×

@@ -181,7 +181,7 @@ def generate_telugu_explanation_sarvam(b: Dict[str, Any]) -> str:
         "discom", "category", "contracted_load_kw", "prev_reading", "present_reading",
         "units", "days", "energy_charges", "fixed_charges", "customer_charges", "electricity_duty",
         "interest_on_ed", "surcharge", "trueup_charges", "trueup_units", "fsa_fca", "subsidy",
-        "adjustment", "loss_gain", "bill_amount", "due_date",
+        "adjustment", "loss_gain", "bill_amount", "gjs_subsidy", "net_bill_amount", "due_date",
     ]
     slim = {k: b.get(k) for k in slim_keys}
     prompt = f"""You are a friendly Telangana electricity bill guide.

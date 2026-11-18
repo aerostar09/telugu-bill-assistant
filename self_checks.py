@@ -25,6 +25,12 @@ Rules:
   11) Interest on CD
   12) Loss/Gain  (include a negative sign, e.g. -0.24)
   13) Bill Amount
+  Gruha Jyothi bills only (header "Gruha Jyothi '0' Bill"): right after Bill Amount they print
+    "GJS Subsidy -602.00" and "Net Bill Amount 0.00". GJS Subsidy is the Gruha Jyothi free-power scheme line and is
+    DIFFERENT from the plain "Subsidy" line in the list above (that one is often 0.00). Put the GJS amount in gjs_subsidy
+    as a POSITIVE number (e.g. 602), Net Bill Amount in net_bill_amount, and NEVER copy the GJS amount into subsidy.
+    Keep bill_amount = the printed Bill Amount (before GJS), not the net. gj_zero_bill_header = true only if the
+    header "Gruha Jyothi '0' Bill" is printed. If these lines are absent, use null (header: false).
   Then: Arrears as on, Arrears after, ACD Due, Total Due, Due Date, Disc Date, Last Paid Dt.
 - Header: Cat, Contracted Load, Present/Previous readings + their dates, Units, Days, Recorded MD.
 - present_reading_date / prev_reading_date = Date column on the Present / Previous reading rows (not the bill date).
@@ -83,6 +89,9 @@ Use null for any field that is not clearly readable — do NOT guess or invent.
   "interest_on_cd": number|null,
   "loss_gain": number|null,
   "bill_amount": number|null,
+  "gjs_subsidy": number|null,
+  "net_bill_amount": number|null,
+  "gj_zero_bill_header": boolean,
   "arrears_as_on": number|null,
   "arrears_after": number|null,
   "arrears": number|null,
@@ -108,12 +117,27 @@ BILL_SCHEMA_KEYS = [
     "energy_charges", "fixed_charges", "customer_charges", "electricity_duty",
     "interest_on_ed", "surcharge", "trueup_charges", "trueup_units", "trueup_items",
     "fsa_fca", "subsidy", "adjustment", "interest_on_cd", "loss_gain",
-    "bill_amount", "arrears_as_on", "arrears_after", "arrears",
+    "bill_amount", "gjs_subsidy", "net_bill_amount", "gj_zero_bill_header",
+    "arrears_as_on", "arrears_after", "arrears",
     "acd_due", "acd_surcharge", "total_due",
     "due_date", "disc_date", "last_paid_date",
     "average_month_units", "unit_history",
     "is_electricity_bill", "image_quality",
 ]
+
+
+def gjs_net_check(b: Dict[str, Any]) -> Optional[bool]:
+    """Gruha Jyothi slip: Bill Amount − |GJS Subsidy| == Net Bill Amount (±₹1).
+
+    None when there is no printed GJS line or one of the numbers is missing.
+    The charge-line sum is checked separately against Bill Amount (gross).
+    """
+    gjs = _n(b.get("gjs_subsidy"))
+    bill = _n(b.get("bill_amount"))
+    net = _n(b.get("net_bill_amount"))
+    if gjs is None or abs(gjs) < 0.005 or bill is None or net is None:
+        return None
+    return abs((bill - abs(gjs)) - net) <= 1.0
 
 
 def run_self_checks(b: Dict[str, Any]) -> Dict[str, Any]:
@@ -139,14 +163,17 @@ def run_self_checks(b: Dict[str, Any]) -> Dict[str, Any]:
     if tu_items:
         trueup_eq_rate = all(i["valid"] for i in tu_items)
 
-    failures = [v for v in (units_eq_delta, sum_eq_bill, trueup_eq_rate) if v is False]
+    gjs_net_ok = gjs_net_check(b)
+
+    failures = [v for v in (units_eq_delta, sum_eq_bill, trueup_eq_rate, gjs_net_ok) if v is False]
     ok = len(failures) == 0
-    consumer_ok = sum_eq_bill is True
+    consumer_ok = sum_eq_bill is True and gjs_net_ok is not False
     return {
         "units_eq_delta": units_eq_delta,
         "sum_calc": sum_calc if b.get("bill_amount") is not None else None,
         "sum_eq_bill": sum_eq_bill,
         "trueup_eq_rate": trueup_eq_rate,
+        "gjs_net_ok": gjs_net_ok,
         "ok": ok,
         "consumer_ok": consumer_ok,
         "message_te": None if consumer_ok else "మీ బిల్లు లో ఒక్క నంబర్ మ్యాచ్ అవ్వట్లేదు, CSC/1912 కి కాల్ చేయండి.",
@@ -224,7 +251,7 @@ def run_all_checks(b: Dict[str, Any]) -> Dict[str, Any]:
     sc = run_self_checks(b)
     ls = run_label_shift_checks(b)
     fail_keys = []
-    for k in ("units_eq_delta", "sum_eq_bill", "trueup_eq_rate"):
+    for k in ("units_eq_delta", "sum_eq_bill", "trueup_eq_rate", "gjs_net_ok"):
         if sc.get(k) is False:
             fail_keys.append(k)
     for k in ("customer_typical", "ed_vs_units", "energy_gt_fixed"):
@@ -239,7 +266,7 @@ def run_all_checks(b: Dict[str, Any]) -> Dict[str, Any]:
     # Consumer-facing match: the printed total is explained within ₹1 after
     # reconciliation. Diagnostic fails (true-up paise, label-shift, reading
     # typo) may still drive a retry, but must not show the 1912 banner.
-    consumer_ok = sc.get("sum_eq_bill") is True
+    consumer_ok = sc.get("sum_eq_bill") is True and sc.get("gjs_net_ok") is not False
     out["consumer_ok"] = consumer_ok
     out["message_te"] = (
         None if consumer_ok else "మీ బిల్లు లో ఒక్క నంబర్ మ్యాచ్ అవ్వట్లేదు, CSC/1912 కి కాల్ చేయండి."

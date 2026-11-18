@@ -291,6 +291,13 @@ def snap_arrears(bill: Dict[str, Any], notes: List[str]) -> Dict[str, Any]:
     bill_amt = _num(b.get("bill_amount"))
     if bill_amt is None:
         bill_amt = printed
+    # Gruha Jyothi slip: Total Due follows the Net Bill Amount (after GJS).
+    from bill_lines import gjs_printed, current_net_amount
+    if gjs_printed(b):
+        net = current_net_amount(b)
+        if net is not None:
+            bill_amt = net
+            printed = net
     expected = None
     if total_due is not None and bill_amt is not None:
         expected = round(total_due - bill_amt - acd, 2)

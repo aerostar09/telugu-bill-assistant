@@ -192,12 +192,28 @@ def build_voice_summary(
     *,
     reasons: Optional[List[Dict[str, Any]]] = None,
     forecast_range: Optional[Dict[str, Any]] = None,
+    gj: Optional[Dict[str, Any]] = None,
 ) -> str:
-    """15–25s Telugu script: amount, units, one main reason, next-bill range."""
+    """15–25s Telugu script: amount, units, one main reason, next-bill range.
+
+    A printed GJS Subsidy line (Gruha Jyothi zero bill) is always honoured:
+    the spoken amount is the payable net, never the gross Bill Amount.
+    """
+    from bill_lines import gjs_subsidy_amount, payable_amount
     parts: List[str] = []
-    total = _amt(bill.get("bill_amount"))
-    if total is None:
-        total = _amt(bill.get("total_due"))
+    gjs = gjs_subsidy_amount(bill)
+    zero_view = gjs is not None or (gj or {}).get("mode") == "free"
+    if zero_view:
+        pay = payable_amount(bill) if gjs is not None else (gj or {}).get("payable")
+        gross = _amt(bill.get("bill_amount"))
+        parts.append(f"గృహ జ్యోతి వల్ల ఈ నెల చెల్లించాల్సింది {rupees_spoken(pay or 0)}.")
+        if gross is not None:
+            parts.append(f"స్కీమ్ లేకపోతే {rupees_spoken(gross)}.")
+        total = None
+    else:
+        total = _amt(bill.get("bill_amount"))
+        if total is None:
+            total = _amt(bill.get("total_due"))
     if total is not None:
         parts.append(f"ఈ నెల బిల్లు {rupees_spoken(total)}.")
     units = _amt(bill.get("units"))
@@ -205,7 +221,9 @@ def build_voice_summary(
         parts.append(f"{int(round(units))} యూనిట్లు వాడారు.")
     if reasons:
         parts.append(reasons[0]["voice_te"])
-    if forecast_range and forecast_range.get("low") is not None:
+    if zero_view and units is not None and units <= 200:
+        parts.append("వచ్చే నెల కూడా 200 యూనిట్ల లోపు ఉంటే బిల్లు సున్నా.")
+    elif forecast_range and forecast_range.get("low") is not None:
         lo = int(forecast_range["low"])
         hi = int(forecast_range["high"])
         parts.append(f"వచ్చే నెల అంచనా {lo} నుంచి {hi} రూపాయలు.")

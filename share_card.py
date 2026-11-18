@@ -8,7 +8,7 @@ from urllib.parse import quote
 
 from PIL import Image, ImageDraw, ImageFont, features
 
-from bill_lines import ARREARS_KEYS, effective_arrears, nonzero_rows, payable_amount
+from bill_lines import ARREARS_KEYS, REDUCTION_KEYS, effective_arrears, nonzero_rows, payable_amount
 from receipt_ui import next_units_cliff
 
 APP_URL = "https://telugu-electricitybill-assistant.streamlit.app/"
@@ -202,6 +202,14 @@ def short_share_text(
         sign = "−" if amt < 0 or key == "subsidy" else ""
         lines.append(f"• {labels.get(key, name)}: {sign}{_rs(abs(amt))}")
 
+    from bill_lines import gjs_subsidy_amount
+    gjs = gjs_subsidy_amount(bill)
+    if gjs is not None:
+        gross = _amt(bill.get("bill_amount"))
+        if gross is not None:
+            lines.append(f"• స్కీమ్ లేకపోతే చెల్లింపు (Bill Amount): {_rs(gross)}")
+        lines.append(f"• గృహ జ్యోతి సబ్సిడీ (GJS): −{_rs(gjs)}")
+
     pay = payable_amount(bill)
     if pay is not None:
         lines.append(f"⚡ మొత్తం చెల్లించాల్సిన బిల్లు (Total Due): {_rs(pay)}")
@@ -263,7 +271,10 @@ def short_share_text(
     if rng:
         band = format_rupee_range(rng["low"], rng["high"])
         if band:
-            lines.append(f"• వచ్చే నెల అంచనా {band}")
+            if gjs is not None:
+                lines.append(f"• వచ్చే నెల అంచనా (స్కీమ్ లేకపోతే) {band}; 200 యూనిట్ల లోపు ఉంటే ₹0")
+            else:
+                lines.append(f"• వచ్చే నెల అంచనా {band}")
 
     if include_link:
         lines.append(f"🔗 {APP_URL}")
@@ -330,7 +341,7 @@ def make_share_png(
     for r in rows:
         _draw_mixed(d, (70, y), r["name_te"], 26, INK, bold=True)
         _draw_mixed(d, (70, y + 34), r["meaning_te"], 20, MUTED)
-        sign = "−" if r["amount"] < 0 or r["key"] == "subsidy" else ""
+        sign = "−" if r["amount"] < 0 or r["key"] in REDUCTION_KEYS else ""
         amt = f"{sign}₹{abs(r['amount']):,.2f}"
         aw, _ = _text_size(d, amt, _lat(26, True))
         d.text((W - 70 - aw, y + 8), amt, font=_lat(26, True), fill=INK)
@@ -438,7 +449,7 @@ def compact_extracted_summary(bill: Dict[str, Any]) -> List[tuple]:
             continue
         rows.append((label, str(val)))
     for r in nonzero_rows(bill):
-        sign = "−" if r["amount"] < 0 or r["key"] == "subsidy" else ""
+        sign = "−" if r["amount"] < 0 or r["key"] in REDUCTION_KEYS else ""
         rows.append((r["name_te"], f"{sign}₹{abs(r['amount']):,.2f}"))
     pay = payable_amount(bill)
     if pay is not None:

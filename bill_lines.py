@@ -24,6 +24,13 @@ CHARGE_ROWS: List[Tuple[str, str, str]] = [
     ("loss_gain", "రౌండింగ్ (Loss/Gain)", "పైసల సర్దుబాటు"),
 ]
 
+# Gruha Jyothi scheme line printed AFTER Bill Amount on zero-bill slips:
+#   Bill Amount 602.00 / GJS Subsidy -602.00 / Net Bill Amount 0.00.
+# Stored as a POSITIVE amount (like `subsidy`); always shown with a minus.
+# Not part of the charge-line sum (that still adds up to Bill Amount).
+GJS_ROW: Tuple[str, str, str] = ("gjs_subsidy", "గృహ జ్యోతి సబ్సిడీ", "ప్రభుత్వం భరించిన మొత్తం (GJS)")
+REDUCTION_KEYS = ("subsidy", "gjs_subsidy")
+
 AFTER_BILL_ROWS: List[Tuple[str, str, str]] = [
     ("arrears_as_on", "బకాయిలు (as on)", "పాత బకాయి"),
     ("arrears_after", "బకాయిలు (after)", "తర్వాత వచ్చిన బకాయి"),
@@ -47,7 +54,8 @@ SCHEMA_KEYS = [
     "energy_charges", "fixed_charges", "customer_charges", "electricity_duty",
     "interest_on_ed", "surcharge", "trueup_charges", "trueup_units", "trueup_items",
     "fsa_fca", "subsidy", "adjustment", "interest_on_cd", "loss_gain",
-    "bill_amount", "arrears_as_on", "arrears_after", "arrears",
+    "bill_amount", "gjs_subsidy", "net_bill_amount", "gj_zero_bill_header",
+    "arrears_as_on", "arrears_after", "arrears",
     "acd_due", "acd_surcharge", "total_due",
     "due_date", "disc_date", "last_paid_date",
     "average_month_units", "unit_history",
@@ -69,10 +77,51 @@ ARREARS_MIN_SHOW = 1.0  # rupees — paise/rounding slips are not arrears
 ARREARS_SUM_TOL = 1.0
 
 
-def _bill_and_total(bill: Dict[str, Any]) -> Tuple[Optional[float], Optional[float], float]:
+def gjs_subsidy_amount(bill: Dict[str, Any]) -> Optional[float]:
+    """Printed Gruha Jyothi (GJS) subsidy as a positive amount, else None.
+
+    Also covers a slip whose header says "Gruha Jyothi '0' Bill" with a
+    printed Net Bill Amount of 0 but no readable GJS line: the scheme then
+    covered the whole printed Bill Amount (pure arithmetic on printed values).
+    """
+    g = _amt(bill.get("gjs_subsidy"))
+    if g is not None and abs(g) >= 0.005:
+        return round(abs(g), 2)
+    if bill.get("gj_zero_bill_header") is True:
+        net = _amt(bill.get("net_bill_amount"))
+        bill_amt = _amt(bill.get("bill_amount"))
+        if net is not None and abs(net) <= 0.5 and bill_amt is not None and bill_amt > 0.5:
+            return round(bill_amt, 2)
+    return None
+
+
+def gjs_printed(bill: Dict[str, Any]) -> bool:
+    return gjs_subsidy_amount(bill) is not None
+
+
+def current_net_amount(bill: Dict[str, Any]) -> Optional[float]:
+    """This month's amount after a printed GJS subsidy (Net Bill Amount).
+
+    Prefers the printed Net Bill Amount; else Bill Amount − GJS (never < 0).
+    Without a GJS line this is just the Bill Amount.
+    """
     bill_amt = _amt(bill.get("bill_amount"))
     if bill_amt is None:
         bill_amt = _amt(bill.get("bill_amount_printed"))
+    g = gjs_subsidy_amount(bill)
+    if g is None:
+        return bill_amt
+    net = _amt(bill.get("net_bill_amount"))
+    if net is not None:
+        return round(max(0.0, net), 2)
+    if bill_amt is None:
+        return None
+    return round(max(0.0, bill_amt - g), 2)
+
+
+def _bill_and_total(bill: Dict[str, Any]) -> Tuple[Optional[float], Optional[float], float]:
+    # With a printed GJS line, Total Due = Net Bill Amount + arrears + ACD.
+    bill_amt = current_net_amount(bill)
     total_due = _amt(bill.get("total_due"))
     acd = _amt(bill.get("acd_due")) or 0.0
     return bill_amt, total_due, acd
@@ -139,6 +188,10 @@ def nonzero_rows(bill: Dict[str, Any]) -> List[Dict[str, Any]]:
         if amt is None or abs(amt) < 0.005:
             continue
         out.append({"key": key, "name_te": name, "meaning_te": meaning, "amount": round(amt, 2)})
+    g = gjs_subsidy_amount(bill)
+    if g is not None:
+        key, name, meaning = GJS_ROW
+        out.append({"key": key, "name_te": name, "meaning_te": meaning, "amount": g})
     eff = effective_arrears(bill)
     split = _split_arrears_are_usable(bill, eff)
     for key, name, meaning in AFTER_BILL_ROWS:
@@ -162,11 +215,21 @@ def nonzero_rows(bill: Dict[str, Any]) -> List[Dict[str, Any]]:
 
 
 def payable_amount(bill: Dict[str, Any]) -> Optional[float]:
-    """Total Due when consistent arrears (or a higher total) exist; otherwise Bill Amount."""
+    """Total Due when consistent arrears (or a higher total) exist; otherwise Bill Amount.
+
+    With a printed GJS subsidy, "Bill Amount" here means the Net Bill Amount
+    (e.g. 602 − 602 = 0), so a Gruha Jyothi zero bill is payable ₹0 (plus any
+    printed arrears / ACD via Total Due).
+    """
     bill_amt, total_due, _acd = _bill_and_total(bill)
     arr = effective_arrears(bill)
     if arr >= ARREARS_MIN_SHOW and total_due is not None:
         return total_due
     if total_due is not None and bill_amt is not None and total_due > bill_amt + 0.5:
+        gross = _amt(bill.get("bill_amount"))
+        if gjs_printed(bill) and gross is not None and abs(total_due - gross) <= 0.5:
+            # A GJS slip prints Total Due after the subsidy; a "Total Due"
+            # equal to the gross Bill Amount is a misread, not money owed.
+            return bill_amt
         return total_due
     return bill_amt if bill_amt is not None else total_due

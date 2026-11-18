@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from typing import Any, Dict, Optional
 
-from bill_lines import CHARGE_ROWS, effective_arrears, nonzero_rows, payable_amount
+from bill_lines import CHARGE_ROWS, REDUCTION_KEYS, effective_arrears, nonzero_rows, payable_amount
 from dashboard import _inr, energy_formula
 from tariff import delayed_payment_surcharge, trueup_rate_for_bill_date, infer_category
 
@@ -35,6 +35,8 @@ def formula_for(key: str, bill: Dict[str, Any]) -> str:
         return "బిల్లు మొత్తానికి పైసల సర్దుబాటు (Loss/Gain)"
     if key == "subsidy":
         return "ప్రభుత్వం తగ్గించిన మొత్తం"
+    if key == "gjs_subsidy":
+        return "గృహ జ్యోతి స్కీమ్: బిల్లులో ముద్రించిన GJS సబ్సిడీ (Bill Amount − GJS = Net Bill Amount)"
     if key == "fsa_fca":
         return "ఇంధన ధర సర్దుబాటు (FSA/FCA)"
     if key == "interest_on_ed":
@@ -116,7 +118,16 @@ def render_receipt_card(
         if r["key"] == "trueup_charges":
             from draft_features import trueup_what_is_it_html
             formula = f"{formula}<br>{trueup_what_is_it_html()}"
-        sign = "−" if r["amount"] < 0 or r["key"] == "subsidy" else ""
+        if r["key"] == "gjs_subsidy" and bill.get("bill_amount") is not None:
+            # Printed Bill Amount before the scheme, then the GJS line.
+            parts.append(
+                f'<div class="rc-row rc-sub" data-testid="receipt-gj-without" '
+                f'style="display:flex;justify-content:space-between;padding:.35rem 0;'
+                f'border-top:1px dashed #cfd8dc;color:#455a64">'
+                f'<span>{GJ_WITHOUT_SCHEME_LABEL_TE}</span>'
+                f'<span>₹{float(bill["bill_amount"]):,.2f}</span></div>'
+            )
+        sign = "−" if r["amount"] < 0 or r["key"] in REDUCTION_KEYS else ""
         amt = f"{sign}₹{abs(r['amount']):,.2f}"
         parts.append(
             f'<details class="rc-row"><summary>'

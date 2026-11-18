@@ -11,6 +11,10 @@ G.O.Ms.No.7 Energy (Power.I) dated 26.02.2024):
     the TGERC true-up order of 05.10.2026).
 
 App logic (pure, no Streamlit):
+  0. A printed "GJS Subsidy" line (Gruha Jyothi '0' Bill: Bill Amount 602 /
+     GJS Subsidy -602 / Net Bill Amount 0) always wins, ticked or not: the
+     printed Net (plus printed arrears / ACD via Total Due) is payable and the
+     gross Bill Amount is shown as "స్కీమ్ లేకపోతే చెల్లింపు".
   1. A printed Subsidy line on the bill always wins over the checkbox.
   2. Ticked and units <= 200, no printed subsidy → subsidised view: this
      month's Bill Amount would be a zero bill; arrears / ACD stay payable.
@@ -25,7 +29,7 @@ from __future__ import annotations
 
 from typing import Any, Dict, Optional
 
-from bill_lines import effective_arrears, payable_amount
+from bill_lines import current_net_amount, effective_arrears, gjs_subsidy_amount, payable_amount
 
 GJ_CAP_UNITS = 200
 GJ_WARN_FROM_UNITS = 196
@@ -62,8 +66,46 @@ def printed_subsidy(bill: Dict[str, Any]) -> Optional[float]:
     return abs(s)
 
 
+GJ_WITHOUT_SCHEME_LABEL_TE = "స్కీమ్ లేకపోతే చెల్లింపు"
+
+
+def gjs_printed_view(bill: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    """View for a slip that prints a GJS Subsidy line. None if not printed."""
+    gjs = gjs_subsidy_amount(bill)
+    if gjs is None:
+        return None
+    gross = _f(bill.get("bill_amount"))
+    if gross is None:
+        gross = _f(bill.get("bill_amount_printed"))
+    net = current_net_amount(bill)
+    pay = payable_amount(bill)
+    extra = round((pay or 0.0) - (net or 0.0), 2)
+    if net is not None and abs(net) < 0.5:
+        note = f"గృహ జ్యోతి జీరో బిల్లు: బిల్లులోనే GJS సబ్సిడీ −{_rs(gjs)} ముద్రించారు — ఈ నెల బిల్లు ₹0."
+    else:
+        note = (
+            f"గృహ జ్యోతి: బిల్లులోనే GJS సబ్సిడీ −{_rs(gjs)} ముద్రించారు — "
+            f"ఈ నెల నెట్ బిల్లు {_rs(net)}."
+        )
+    if gross is not None:
+        note += f" {GJ_WITHOUT_SCHEME_LABEL_TE} {_rs(gross)}."
+    if extra >= 1.0:
+        note += f" బకాయిలు/ACD {_rs(extra)} మాత్రం చెల్లించాలి."
+    return {
+        "mode": "gjs_printed",
+        "payable": pay,
+        "net_amount": net,
+        "normal_amount": gross,
+        "gjs_subsidy": gjs,
+        "note_te": note,
+    }
+
+
 def gruha_jyothi_view(bill: Dict[str, Any], ticked: bool) -> Optional[Dict[str, Any]]:
     """What to show for Gruha Jyothi. None → nothing extra on screen."""
+    printed_gjs = gjs_printed_view(bill)
+    if printed_gjs is not None:
+        return printed_gjs
     sub = printed_subsidy(bill)
     units = _f(bill.get("units"))
     if sub is not None:
@@ -112,10 +154,30 @@ def gruha_jyothi_view(bill: Dict[str, Any], ticked: bool) -> Optional[Dict[str, 
     }
 
 
+def gj_zero_bill_active(gj: Optional[Dict[str, Any]]) -> bool:
+    """True when this month's bill is shown as a Gruha Jyothi zero bill."""
+    return bool(gj) and gj.get("mode") in ("gjs_printed", "free")
+
+
+def gj_forecast_note_te(gj: Optional[Dict[str, Any]], forecast: Optional[Dict[str, Any]]) -> Optional[str]:
+    """Next-month wording for a zero-bill beneficiary (rupee range = without scheme)."""
+    if not gj_zero_bill_active(gj):
+        return None
+    likely = _f((forecast or {}).get("likely"))
+    if likely is not None and likely > GJ_CAP_UNITS:
+        return None
+    return "200 యూనిట్ల లోపు ఉంటే గృహ జ్యోతితో వచ్చే నెల కూడా ₹0; పై అంచనా స్కీమ్ లేకపోతే."
+
+
 def gruha_jyothi_forecast_warning(
     bill: Dict[str, Any], forecast: Optional[Dict[str, Any]], ticked: bool
 ) -> Optional[str]:
-    """Warn a ticked beneficiary when next month looks like 196–200 units (or >200)."""
+    """Warn a beneficiary when next month looks like 196–200 units (or >200).
+
+    A printed GJS Subsidy line proves enrolment, so it counts as ticked.
+    """
+    if gjs_subsidy_amount(bill) is not None:
+        ticked = True
     if not ticked or not forecast:
         return None
     likely = _f(forecast.get("likely"))

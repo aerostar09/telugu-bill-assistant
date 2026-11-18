@@ -134,17 +134,20 @@ def render_main_understand(
     rng = consumer_forecast_range(forecast=model.get("forecast"))
     if rng:
         band = format_rupee_range(rng["low"], rng["high"])
+        from gruha_jyothi import gj_forecast_note_te
+        gj_fc = gj_forecast_note_te(model.get("gruha_jyothi"), model.get("forecast"))
+        gj_bit = f'<br><small>{gj_fc}</small>' if gj_fc else ""
         st.markdown(
             f'<div class="forecast-one" data-testid="forecast-one">'
             f'వచ్చే నెల అంచనా <b>{band}</b>'
-            f' (ఇదే వాడకం ఉంటే)</div>',
+            f' (ఇదే వాడకం ఉంటే){gj_bit}</div>',
             unsafe_allow_html=True,
         )
     if model.get("gj_forecast_warn"):
         st.warning(model["gj_forecast_warn"])
     reasons = render_top_reasons(model, max_n=3)
     spoken = voice_text or build_voice_summary(
-        model["bill"], reasons=reasons, forecast_range=rng
+        model["bill"], reasons=reasons, forecast_range=rng, gj=model.get("gruha_jyothi")
     )
     if spoken:
         st.markdown(f"##### {t('voice')}")
@@ -329,6 +332,10 @@ def render_estimate_section(model: Dict[str, Any]) -> None:
             unsafe_allow_html=True,
         )
         st.caption(rng["basis"])
+        from gruha_jyothi import gj_forecast_note_te
+        gj_fc = gj_forecast_note_te(model.get("gruha_jyothi"), fc)
+        if gj_fc:
+            st.info(gj_fc)
     elif not fc:
         st.info("అంచనాకు ఇంకా చాలిన డేటా లేదు.")
     if fc:
