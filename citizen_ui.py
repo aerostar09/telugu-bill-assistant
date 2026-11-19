@@ -19,17 +19,27 @@ from bill_lines import payable_amount
 from receipt_ui import render_receipt_card, render_units_bar, next_units_cliff
 
 _CHECK_ICON = (
-    '<svg viewBox="0 0 20 20" fill="none" aria-hidden="true">'
-    '<circle cx="10" cy="10" r="9" stroke="#0b6b4f" stroke-width="1.6"/>'
-    '<path d="M6 10.2l2.4 2.4L14.2 7" stroke="#0b6b4f" stroke-width="1.8" '
+    '<svg width="28" height="28" viewBox="0 0 28 28" aria-hidden="true">'
+    '<circle cx="14" cy="14" r="14" fill="#12B76A"/>'
+    '<path d="M8.2 14.3l3.3 3.3 8-8" fill="none" stroke="#fff" stroke-width="2.4" '
     'stroke-linecap="round" stroke-linejoin="round"/></svg>'
 )
 _WARN_ICON = (
-    '<svg viewBox="0 0 20 20" fill="none" aria-hidden="true">'
-    '<path d="M10 2.5L18.5 17H1.5L10 2.5z" stroke="#b54708" stroke-width="1.5" stroke-linejoin="round"/>'
-    '<path d="M10 8v4.2" stroke="#b54708" stroke-width="1.6" stroke-linecap="round"/>'
-    '<circle cx="10" cy="14.5" r="0.9" fill="#b54708"/></svg>'
+    '<svg width="28" height="28" viewBox="0 0 28 28" aria-hidden="true">'
+    '<circle cx="14" cy="14" r="14" fill="#DC6803"/>'
+    '<path d="M14 8v7" stroke="#fff" stroke-width="2.4" stroke-linecap="round"/>'
+    '<circle cx="14" cy="19.2" r="1.3" fill="#fff"/></svg>'
 )
+
+
+def payable_size_class(display: str) -> str:
+    """Keep the ₹ amount on one line at a 420px-wide bill tab."""
+    n = len(display or "")
+    if n >= 8:
+        return "pay-long"
+    if n >= 6:
+        return "pay-mid"
+    return ""
 
 
 def bill_dashboard_view(
@@ -66,11 +76,13 @@ def bill_dashboard_view(
     else:
         banner_kind = "bad"
         banner_te = checks.get("message_te") or t("calc_mismatch")
+    payable_display = rupees_display(payable) if payable is not None else "—"
     return {
         "units_label": units_label,
         "due": due,
         "payable": payable,
-        "payable_display": rupees_display(payable) if payable is not None else "—",
+        "payable_display": payable_display,
+        "pay_size": payable_size_class(payable_display),
         "conf": conf,
         "match_ok": bool(ok),
         "banner_kind": banner_kind,
@@ -91,6 +103,9 @@ def render_dashboard_hero(model: Dict[str, Any], corrections: Optional[List[str]
     card_cls = "pay-card ok" if view["match_ok"] else "pay-card bad"
     banner_cls = "banner-ok" if view["banner_kind"] == "ok" else "banner-bad"
     icon = _CHECK_ICON if view["match_ok"] else _WARN_ICON
+    pay_cls = "pay"
+    if view.get("pay_size"):
+        pay_cls += " " + view["pay_size"]
     banner = ""
     if view["banner_te"]:
         banner = f'<div class="{banner_cls}" data-testid="trust-verdict">{_html.escape(view["banner_te"])}</div>'
@@ -99,13 +114,13 @@ def render_dashboard_hero(model: Dict[str, Any], corrections: Optional[List[str]
         f'<div class="side-tile units"><div class="k">{_html.escape(t("units"))}</div>'
         f'<div class="v">{_html.escape(view["units_label"])}</div></div>'
         f'<div class="{card_cls}">'
-        f'<div class="pay-head"><span class="ico">{icon}</span>'
-        f'<span>{_html.escape(t("you_pay"))}</span></div>'
-        f'<div class="pay">{_html.escape(view["payable_display"])}</div>'
+        f'<div class="hd"><div class="ico">{icon}</div>'
+        f'<div class="title">{_html.escape(t("you_pay"))}</div></div>'
+        f'<div class="{pay_cls}">{_html.escape(view["payable_display"])}</div>'
         f"{pill}{banner}"
         f"</div>"
         f'<div class="side-tile due"><div class="k">{_html.escape(t("last_date"))}</div>'
-        f'<div class="v">{_html.escape(view["due"])}</div></div>'
+        f'<div class="v date">{_html.escape(view["due"])}</div></div>'
         f"</div>"
     )
     st.markdown(html, unsafe_allow_html=True)

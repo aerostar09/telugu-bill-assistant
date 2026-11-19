@@ -665,9 +665,7 @@ def _render_sample_picker(demo: bool, use_sarvam: bool, *, key_prefix: str) -> N
 
 def render_citizen_tab(demo: bool, use_sarvam: bool, show_calc: bool = False) -> None:
     uploaded = None
-    from share_card import render_inline_share, share_button_plan
-    existing = st.session_state.get("result") or {}
-    has_result = bool(existing.get("bill")) and not existing.get("guard")
+    from share_card import render_inline_share
     if not demo:
         uploaded = st.file_uploader(
             t("upload_label"),
@@ -677,59 +675,28 @@ def render_citizen_tab(demo: bool, use_sarvam: bool, show_calc: bool = False) ->
         st.caption(t("upload_hint"))
         st.checkbox(GJ_CHECKBOX_LABEL_TE, key="gj_scheme")
         st.caption(GJ_CHECKBOX_HINT_EN)
-        c1, c2 = st.columns(2)
-        with c1:
-            clicked = st.button(
-                t("upload_button"),
-                type="primary",
-                disabled=uploaded is None,
-                width="stretch",
-                key="read_bill_btn",
-            )
-        with c2:
-            wa_clicked = st.button(
-                "WhatsApp కి పంపండి",
-                disabled=(uploaded is None and not has_result),
-                width="stretch",
-                key="wa_send_top",
-            )
-        plan = share_button_plan(
-            uploaded is not None,
-            has_result,
-            wa_clicked=bool(wa_clicked),
-            read_clicked=bool(clicked),
+        clicked = st.button(
+            t("upload_button"),
+            type="primary",
+            disabled=uploaded is None,
+            width="stretch",
+            key="read_bill_btn",
         )
-        if plan == "need_photo":
-            st.warning("దయచేసి ముందు బిల్లు ఫోటో అప్‌లోడ్ చేయండి.")
-        elif plan in ("read_only", "read_then_share"):
+        if clicked and uploaded is not None:
             result = _ingest_uploaded_bill(uploaded, use_sarvam)
-            if result is not None and not result.get("guard") and plan == "read_then_share":
-                st.session_state["share_now"] = True
-            elif result is not None and result.get("guard"):
+            if result is not None and result.get("guard"):
                 st.session_state["share_now"] = False
-        elif plan == "share_only":
-            st.session_state["share_now"] = True
     else:
         st.caption("డెమో మోడ్ ఆన్ — అసలు బిల్లు ఫోటో అవసరం లేదు, NVIDIA కాల్ లేదు, PII లేదు.")
         st.checkbox(GJ_CHECKBOX_LABEL_TE, key="gj_scheme")
         st.caption(GJ_CHECKBOX_HINT_EN)
-        c1, c2 = st.columns(2)
-        with c1:
-            st.button(
-                t("upload_button"),
-                type="primary",
-                disabled=True,
-                width="stretch",
-                key="read_bill_demo",
-            )
-        with c2:
-            wa_clicked = st.button(
-                "WhatsApp కి పంపండి",
-                width="stretch",
-                key="wa_send_demo",
-            )
-        if wa_clicked:
-            st.session_state["share_now"] = True
+        st.button(
+            t("upload_button"),
+            type="primary",
+            disabled=True,
+            width="stretch",
+            key="read_bill_demo",
+        )
 
     result = st.session_state.get("result")
     if st.session_state.get("share_now") and result and not result.get("guard"):

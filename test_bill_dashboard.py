@@ -2,8 +2,9 @@
 from __future__ import annotations
 
 import unittest
+from pathlib import Path
 
-from citizen_ui import bill_dashboard_view
+from citizen_ui import bill_dashboard_view, payable_size_class
 from gruha_jyothi import gruha_jyothi_view
 from scenarios import scenario_b
 from self_checks import run_all_checks
@@ -71,3 +72,27 @@ class BillDashboardViewTests(unittest.TestCase):
         self.assertEqual(view["conf"]["css"], "badge-red")
         # Payable still follows the printed/net amount helper, not the check result.
         self.assertEqual(view["payable_display"], "₹900")
+
+    def test_payable_size_class_keeps_long_amounts_on_one_line(self):
+        self.assertEqual(payable_size_class("₹0"), "")
+        self.assertEqual(payable_size_class("₹757"), "")
+        self.assertEqual(payable_size_class("₹12346"), "pay-mid")
+        self.assertEqual(payable_size_class("₹12,345.60"), "pay-long")
+        bill = lt_notice(bill_amount=12345.60)
+        view = bill_dashboard_view(_model(bill))
+        self.assertEqual(view["payable_display"], "₹12346")
+        self.assertEqual(view["pay_size"], "pay-mid")
+
+
+class SingleWhatsAppButtonTests(unittest.TestCase):
+    def test_only_hero_row_whatsapp_button_key_remains(self):
+        app = Path(__file__).with_name("app_nvidia.py").read_text()
+        ui = Path(__file__).with_name("citizen_ui.py").read_text()
+        self.assertNotIn('key="wa_send_top"', app)
+        self.assertNotIn('key="wa_send_demo"', app)
+        self.assertNotIn('key="wa_send_top"', ui)
+        self.assertNotIn('key="wa_send_demo"', ui)
+        self.assertIn('key="wa_send_bill"', ui)
+        self.assertEqual(app.count("WhatsApp కి పంపండి"), 0)
+        self.assertEqual(ui.count("WhatsApp కి పంపండి"), 1)
+
