@@ -53,3 +53,32 @@ class CitizenSidebarSourceTests(unittest.TestCase):
 
     def test_use_sarvam_stays_off(self):
         self.assertIn("use_sarvam = False", self.src)
+
+
+class CitizenSamplePickerTests(unittest.TestCase):
+    """Main citizen screen offers only the Gruha Jyothi sample (B)."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.src = (Path(__file__).resolve().parent / "app_nvidia.py").read_text()
+
+    def test_no_developer_tariff_caption(self):
+        self.assertNotIn("tariff.py లెక్కిస్తుంది", self.src)
+        self.assertNotIn("upload-panel", self.src)
+
+    def test_default_picker_is_scenario_b_only(self):
+        from terms import t
+        self.assertIn("try_sample_gj", self.src)
+        self.assertIn('t("try_sample_gj")', self.src)
+        self.assertEqual(t("try_sample_gj"), "నమూనా బిల్లు చూడండి (గృహ జ్యోతి)")
+        self.assertEqual(t("sample_note"), "నమూనా డేటా, నిజమైన కస్టమర్ కాదు")
+
+    def test_a_and_c_only_inside_demo_branch(self):
+        # The default path loads only B; A/C buttons exist only in the demo branch.
+        self.assertIn('for col, key in zip(cols, ("A", "B", "C")):', self.src)
+        helper = self.src.split("def _render_sample_picker", 1)[1].split("def render_citizen_tab", 1)[0]
+        default = helper.split("if demo:", 1)[1].split("return", 1)[1]
+        self.assertIn('_result_from_scenario("B"', default)
+        self.assertNotIn('"A"', default)
+        self.assertNotIn('"C"', default)
+

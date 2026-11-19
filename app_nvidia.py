@@ -644,13 +644,31 @@ def _ingest_uploaded_bill(uploaded, use_sarvam: bool):
     return result
 
 
+def _render_sample_picker(demo: bool, use_sarvam: bool, *, key_prefix: str) -> None:
+    """Citizen UI shows one Gruha Jyothi sample. A and C only under ?demo=1."""
+    if demo:
+        st.caption(t("sample_note"))
+        cols = st.columns(3)
+        for col, key in zip(cols, ("A", "B", "C")):
+            sc = get_scenario(key)
+            if col.button(sc["title_te"], key=f"{key_prefix}_{key}"):
+                st.session_state["result"] = _result_from_scenario(key, use_sarvam)
+                st.session_state["prev_result"] = None
+                st.rerun()
+        return
+    if st.button(t("try_sample_gj"), width="stretch", key=f"{key_prefix}_B"):
+        st.session_state["result"] = _result_from_scenario("B", use_sarvam)
+        st.session_state["prev_result"] = None
+        st.rerun()
+    st.caption(t("sample_note"))
+
+
 def render_citizen_tab(demo: bool, use_sarvam: bool) -> None:
     uploaded = None
     from share_card import render_inline_share, share_button_plan
     existing = st.session_state.get("result") or {}
     has_result = bool(existing.get("bill")) and not existing.get("guard")
     if not demo:
-        st.markdown('<div class="upload-panel">', unsafe_allow_html=True)
         uploaded = st.file_uploader(
             t("upload_label"),
             type=["jpg", "jpeg", "png"],
@@ -675,7 +693,6 @@ def render_citizen_tab(demo: bool, use_sarvam: bool) -> None:
                 width="stretch",
                 key="wa_send_top",
             )
-        st.markdown("</div>", unsafe_allow_html=True)
         plan = share_button_plan(
             uploaded is not None,
             has_result,
@@ -693,7 +710,6 @@ def render_citizen_tab(demo: bool, use_sarvam: bool) -> None:
         elif plan == "share_only":
             st.session_state["share_now"] = True
     else:
-        st.markdown('<div class="upload-panel">', unsafe_allow_html=True)
         st.caption("డెమో మోడ్ ఆన్ — అసలు బిల్లు ఫోటో అవసరం లేదు, NVIDIA కాల్ లేదు, PII లేదు.")
         st.checkbox(GJ_CHECKBOX_LABEL_TE, key="gj_scheme")
         st.caption(GJ_CHECKBOX_HINT_EN)
@@ -712,7 +728,6 @@ def render_citizen_tab(demo: bool, use_sarvam: bool) -> None:
                 width="stretch",
                 key="wa_send_demo",
             )
-        st.markdown("</div>", unsafe_allow_html=True)
         if wa_clicked:
             st.session_state["share_now"] = True
 
@@ -720,22 +735,15 @@ def render_citizen_tab(demo: bool, use_sarvam: bool) -> None:
     if st.session_state.get("share_now") and result and not result.get("guard"):
         render_inline_share(result)
     if not result:
-        with st.expander(t("try_sample"), expanded=False):
-            st.caption("రూపాయలు tariff.py లెక్కిస్తుంది — హార్డ్‌కోడ్ కాదు. నమూనా డేటా, నిజమైన కన్స్యూమర్ కాదు.")
-            c1, c2, c3 = st.columns(3)
-            for col, key in ((c1, "A"), (c2, "B"), (c3, "C")):
-                sc = get_scenario(key)
-                if col.button(sc["title_te"], key=f"citizen_sc_{key}"):
-                    st.session_state["result"] = _result_from_scenario(key, use_sarvam)
-                    st.session_state["prev_result"] = None
-                    st.rerun()
+        _render_sample_picker(demo, use_sarvam, key_prefix="citizen_sc")
         if not demo and uploaded is None:
-            st.info("స్పష్టమైన బిల్లు ఫోటో అప్‌లోడ్ చేయండి, లేదా కింద ఒక నమూనా బిల్లు నొక్కండి.")
+            st.info("స్పష్టమైన బిల్లు ఫోటో అప్‌లోడ్ చేయండి, లేదా నమూనా బిల్లు నొక్కండి.")
         return
 
     if result.get("scenario"):
-        st.caption(result.get("label") or "SAMPLE / one-click scenario")
-        st.caption(f"సీనారియో: {result.get('display_name')}")
+        st.caption(t("sample_note"))
+        if result.get("display_name"):
+            st.caption(result["display_name"])
     elif result.get("demo"):
         st.caption(f"డెమో: {result.get('display_name') or 'లక్ష్మి (డెమో)'} — USC / చిరునామా / ఫోన్ లేవు.")
 
@@ -822,15 +830,7 @@ def render_citizen_tab(demo: bool, use_sarvam: bool) -> None:
         with st.expander("ఫోటో ప్రివ్యూ దాచబడింది / preview hidden (PII)", expanded=False):
             st.caption("పేరు, ఫోన్, చిరునామా స్క్రీన్‌పై చూపించం.")
             st.write(f"File: {uploaded.name}")
-    with st.expander(t("try_sample"), expanded=False):
-        st.caption("రూపాయలు tariff.py లెక్కిస్తుంది — హార్డ్‌కోడ్ కాదు. నమూనా డేటా, నిజమైన కన్స్యూమర్ కాదు.")
-        c1, c2, c3 = st.columns(3)
-        for col, key in ((c1, "A"), (c2, "B"), (c3, "C")):
-            sc = get_scenario(key)
-            if col.button(sc["title_te"], key=f"citizen_sc_footer_{key}"):
-                st.session_state["result"] = _result_from_scenario(key, use_sarvam)
-                st.session_state["prev_result"] = None
-                st.rerun()
+    _render_sample_picker(demo, use_sarvam, key_prefix="citizen_sc_footer")
 
 
 _TRUTHY_QUERY = {"1", "true", "yes"}

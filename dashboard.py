@@ -106,17 +106,17 @@ div[data-testid="stSidebarCollapsedControl"] { display: none !important; }
 .reason-row .why b, .reason-row .why small { margin:0; line-height:1.2; display:block; }
 .reason-row .why small { font-weight:400; color:#5b726e; }
 .reason-row .amt { font-weight: 700; white-space: nowrap; }
-.upload-panel { background:#fff; border:2px dashed #9fd4c8; border-radius:16px; padding:0.7rem 0.8rem 0.45rem; margin: 0 0 0.5rem 0; }
-.upload-panel [data-testid="stHorizontalBlock"] > div:nth-child(2) button {
+.st-key-wa_send_top button:not(:disabled),
+.st-key-wa_send_demo button:not(:disabled) {
   background-color: #128C7E !important;
   color: #ffffff !important;
   border: 0 !important;
 }
-.upload-panel [data-testid="stHorizontalBlock"] > div:nth-child(2) button:hover {
+.st-key-wa_send_top button:not(:disabled):hover,
+.st-key-wa_send_demo button:not(:disabled):hover {
   background-color: #0b554c !important;
   color: #ffffff !important;
 }
-.upload-panel [data-testid="stHorizontalBlock"] { gap: 0.5rem; }
 
 .verdict-sm { font-size: 0.95rem; padding: .4rem .7rem; }
 @media (max-width: 480px) {
