@@ -663,7 +663,7 @@ def _render_sample_picker(demo: bool, use_sarvam: bool, *, key_prefix: str) -> N
     st.caption(t("sample_note"))
 
 
-def render_citizen_tab(demo: bool, use_sarvam: bool) -> None:
+def render_citizen_tab(demo: bool, use_sarvam: bool, show_calc: bool = False) -> None:
     uploaded = None
     from share_card import render_inline_share, share_button_plan
     existing = st.session_state.get("result") or {}
@@ -761,13 +761,13 @@ def render_citizen_tab(demo: bool, use_sarvam: bool) -> None:
         result["bill"], model.get("forecast"), gj_ticked
     )
 
-    tab_u, tab_c, tab_e, tab_h, tab_s = st.tabs([
-        t("nav_understand"),
-        t("nav_compare"),
-        t("nav_estimate"),
-        t("nav_calculated"),
-        t("nav_suggestions"),
-    ])
+    tab_names = citizen_inner_tab_labels(show_calc)
+    tabs = st.tabs(tab_names)
+    tab_u, tab_c, tab_e = tabs[0], tabs[1], tabs[2]
+    if show_calc:
+        tab_h, tab_s = tabs[3], tabs[4]
+    else:
+        tab_h, tab_s = None, tabs[3]
     with tab_u:
         render_main_understand(model, corrections=result.get("corrections"))
         st.markdown(
@@ -814,13 +814,14 @@ def render_citizen_tab(demo: bool, use_sarvam: bool) -> None:
                             render_user_error(format_nvidia_user_message(e))
     with tab_e:
         render_estimate_section(model)
-    with tab_h:
-        render_calculation_section(
-            model,
-            corrections=result.get("corrections"),
-            result=result,
-            telugu=result.get("telugu") or "",
-        )
+    if tab_h is not None:
+        with tab_h:
+            render_calculation_section(
+                model,
+                corrections=result.get("corrections"),
+                result=result,
+                telugu=result.get("telugu") or "",
+            )
     with tab_s:
         render_suggestions_section(model)
         st.caption(f"AI: {_vision_name()}")
@@ -847,6 +848,15 @@ def _qp_get(qp, name: str) -> str:
     if isinstance(val, (list, tuple)):
         val = val[0] if val else ""
     return str(val)
+
+
+def citizen_inner_tab_labels(show_calc: bool) -> list:
+    """Citizen sub-tabs. లెక్క is only for ?demo=1 / officials links."""
+    labels = [t("nav_understand"), t("nav_compare"), t("nav_estimate")]
+    if show_calc:
+        labels.append(t("nav_calculated"))
+    labels.append(t("nav_suggestions"))
+    return labels
 
 
 def parse_hidden_modes(qp) -> Tuple[bool, bool]:
@@ -917,7 +927,7 @@ def main() -> None:
         [t("tab_citizen"), t("tab_whatsapp")]
     )
     with tab_citizen:
-        render_citizen_tab(demo, use_sarvam)
+        render_citizen_tab(demo, use_sarvam, show_calc=(demo or discom_mode))
     with tab_share:
         from share_card import render_share_tab as _render_share_tab
         def _try_demo():

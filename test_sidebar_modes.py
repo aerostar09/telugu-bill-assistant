@@ -2,7 +2,7 @@
 import unittest
 from pathlib import Path
 
-from app_nvidia import parse_hidden_modes
+from app_nvidia import parse_hidden_modes, citizen_inner_tab_labels
 
 
 class ParseHiddenModesTests(unittest.TestCase):
@@ -82,3 +82,27 @@ class CitizenSamplePickerTests(unittest.TestCase):
         self.assertNotIn('"A"', default)
         self.assertNotIn('"C"', default)
 
+
+class CalculatedTabVisibilityTests(unittest.TestCase):
+    """లెక్క is hidden from citizens; visible only on demo/officials URL flags."""
+
+    def test_citizen_default_has_four_tabs_without_lekkha(self):
+        labels = citizen_inner_tab_labels(False)
+        self.assertEqual(labels, ["బిల్లు", "పోలిక", "అంచనా", "సూచనలు"])
+        self.assertNotIn("లెక్క", labels)
+        self.assertEqual(len(labels), 4)
+
+    def test_demo_or_officials_include_lekkha(self):
+        labels = citizen_inner_tab_labels(True)
+        self.assertEqual(labels, ["బిల్లు", "పోలిక", "అంచనా", "లెక్క", "సూచనలు"])
+        self.assertEqual(labels[3], "లెక్క")
+        self.assertEqual(len(labels), 5)
+
+    def test_flag_follows_hidden_modes(self):
+        self.assertFalse(parse_hidden_modes({})[0] or parse_hidden_modes({})[1])
+        demo, officials = parse_hidden_modes({"demo": "1"})
+        self.assertTrue(demo or officials)
+        demo, officials = parse_hidden_modes({"officials": "1"})
+        self.assertTrue(demo or officials)
+        demo, officials = parse_hidden_modes({"view": "discom"})
+        self.assertTrue(demo or officials)
