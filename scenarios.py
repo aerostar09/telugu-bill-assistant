@@ -137,44 +137,59 @@ def scenario_a() -> Dict[str, Any]:
 
 
 def scenario_b() -> Dict[str, Any]:
-    """180 units at normal tariff; GJ would be ₹0; 20-unit buffer before 200."""
+    """180-unit printed Gruha Jyothi zero bill (sample data, not a real consumer).
+
+    Same shape as a real GJS slip: gross Bill Amount from tariff.py, printed
+    gjs_subsidy equal to that amount, Net Bill Amount 0. No true-up line, so
+    the green match banner stays a simple line-sum check. Payable is ₹0
+    without touching the GJ checkbox.
+    """
     units = 180.0
     q = quote_bill(
         units,
         load_kw=SAMPLE_LOAD_KW,
         days=SAMPLE_DAYS,
         bill_date=SAMPLE_BILL_DATE,
-        trueup_units=SAMPLE_TRUEUP_UNITS,
+        trueup_units=0,
         pro_rate=False,
     )
     buffer = 200.0 - units
     daily_30 = round(200.0 / SAMPLE_DAYS, 2)
-    bill = _bill_from_quote(q, trueup_units=SAMPLE_TRUEUP_UNITS)
+    gross = q["total"]
+    bill = _bill_from_quote(
+        q,
+        trueup_units=None,
+        trueup_charges=None,
+        gjs_subsidy=gross,
+        net_bill_amount=0.0,
+        gj_zero_bill_header=True,
+        total_due=0.0,
+    )
     te = (
-        f"సీనారియో B (నమూనా): {int(units)} యూనిట్లు, కేటగిరీ {q['category']}. "
-        f"సాధారణ టారిఫ్ ప్రకారం ఎనర్జీ ₹{q['energy_charges']:.2f}, మొత్తం బిల్లు ₹{q['total']:.2f}.\n"
-        "మీరు గృహ జ్యోతి లబ్ధిదారు అయితే ఈ బిల్లు ₹0 — 180 యూనిట్లు 200 లోపు ఉన్నాయి.\n"
+        f"సీనారియో B (నమూనా, నిజమైన కస్టమర్ కాదు): {int(units)} యూనిట్లు, "
+        f"కేటగిరీ {q['category']}. గృహ జ్యోతి జీరో బిల్లు — బిల్లులో GJS సబ్సిడీ "
+        f"−₹{gross:.2f} ముద్రించారు, చెల్లింపు ₹0. "
+        f"స్కీమ్ లేకపోతే చెల్లింపు ₹{gross:.2f}. "
         f"200 యూనిట్ల బండకు ఇంకా {int(buffer)} యూనిట్లు మిగిలాయి. "
         f"30 రోజుల సైకిల్‌లో 200 లోపు ఉండాలంటే రోజుకు సుమారు {daily_30} యూనిట్ల లోపు వాడండి. "
         "200 దాటితే ఉచిత ప్రయోజనం పోయి మొత్తం బిల్లు వస్తుంది."
     )
     en = (
-        f"Scenario B (sample): {int(units)} units, category {q['category']}, "
-        f"normal-tariff total ₹{q['total']:.2f}. If you are a Gruha Jyothi beneficiary this bill would be ₹0. "
-        f"Buffer before 200: {int(buffer)} units. Daily budget tip: stay under about {daily_30} units/day "
-        "over a 30-day cycle to remain at or below 200."
+        f"Scenario B (sample, not a real consumer): {int(units)} units, category {q['category']}. "
+        f"Printed Gruha Jyothi zero bill — GJS subsidy −₹{gross:.2f}, payable ₹0 "
+        f"(₹{gross:.2f} without the scheme). Buffer before 200: {int(buffer)} units. "
+        f"Daily budget tip: stay under about {daily_30} units/day over a 30-day cycle."
     )
     return {
         "id": "B",
-        "title_te": "సీనారియో B — 180 యూనిట్లు, గృహ జ్యోతి బఫర్",
-        "title_en": "Scenario B — 180 units, Gruha Jyothi buffer",
+        "title_te": "సీనారియో B — 180 యూనిట్లు, గృహ జ్యోతి జీరో బిల్లు",
+        "title_en": "Scenario B — 180 units, Gruha Jyothi zero bill",
         "bill": bill,
         "prev_bill": None,
         "quote": q,
         "buffer_units": buffer,
         "daily_budget_units": daily_30,
         "gruha_jyothi_amount": 0.0,
-        "sample_trueup_units": SAMPLE_TRUEUP_UNITS,
         "telugu": te,
         "english": en,
         "label": "SAMPLE / one-click scenario — rupees from tariff.py",

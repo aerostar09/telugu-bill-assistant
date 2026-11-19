@@ -65,12 +65,39 @@ class ScenarioBTests(unittest.TestCase):
         self.assertEqual(sc["quote"]["energy_charges"], expected)
         self.assertEqual(sc["quote"]["category"], "1B(i)")
 
-    def test_gj_zero_and_buffer(self):
+    def test_printed_gjs_zero_bill_without_checkbox(self):
+        from bill_lines import payable_amount, gjs_subsidy_amount
+        from gruha_jyothi import gruha_jyothi_view
+        from self_checks import run_all_checks
+
         sc = get_scenario("B")
+        bill = sc["bill"]
+        gross = sc["quote"]["total"]
         self.assertEqual(sc["gruha_jyothi_amount"], 0.0)
         self.assertEqual(sc["buffer_units"], 20)
-        self.assertIn("₹0", sc["telugu"])
         self.assertEqual(sc["daily_budget_units"], round(200 / 30, 2))
+        self.assertEqual(bill["units"], 180.0)
+        self.assertEqual(bill["bill_amount"], gross)
+        self.assertEqual(gjs_subsidy_amount(bill), gross)
+        self.assertEqual(bill["net_bill_amount"], 0.0)
+        self.assertIs(bill["gj_zero_bill_header"], True)
+        self.assertEqual(bill["total_due"], 0.0)
+        self.assertIsNone(bill.get("trueup_charges"))
+        self.assertIsNone(bill.get("trueup_units"))
+        self.assertEqual(payable_amount(bill), 0.0)
+        # Printed GJS wins; the citizen checkbox can stay untouched.
+        view = gruha_jyothi_view(bill, False)
+        self.assertEqual(view["mode"], "gjs_printed")
+        self.assertEqual(view["payable"], 0.0)
+        self.assertEqual(view["normal_amount"], gross)
+        self.assertIn("స్కీమ్ లేకపోతే చెల్లింపు", view["note_te"])
+        self.assertIn("₹0", view["note_te"])
+        self.assertIn("నమూనా", sc["telugu"])
+        checks = run_all_checks(bill)
+        self.assertTrue(checks["sum_eq_bill"])
+        self.assertAlmostEqual(checks["sum_calc"], gross, places=2)
+        self.assertTrue(checks["gjs_net_ok"])
+        self.assertTrue(checks["consumer_ok"])
 
 
 class ScenarioCTests(unittest.TestCase):
