@@ -876,7 +876,7 @@ def parse_hidden_modes(qp) -> Tuple[bool, bool]:
 
 def main() -> None:
     st.set_page_config(
-        page_title="మీ విద్యుత్ బిల్లు సహాయకుడు",
+        page_title=t("app_title"),
         page_icon="⚡",
         layout="wide",
         initial_sidebar_state="collapsed",
@@ -901,8 +901,22 @@ def main() -> None:
     use_sarvam = False
 
     st.markdown(f"<style>{CSS}</style>", unsafe_allow_html=True)
+    badge = ""
+    try:
+        from sarvam_provider import get_provider
+        if get_provider() == "sarvam":
+            badge = (
+                f'<a class="sarvam-badge" href="https://www.sarvam.ai/" '
+                f'target="_blank" rel="noopener noreferrer">{t("powered_by_sarvam")}</a>'
+            )
+    except Exception:
+        badge = ""
     st.markdown(
-        f'<div class="tisc-hero"><h1>⚡ {t("app_title")}</h1>'
+        f'<div class="tisc-hero">'
+        f'<div class="tisc-hero-row">'
+        f"<h1>{t('app_title')}</h1>"
+        f"{badge}"
+        f"</div>"
         f"<p>{t('app_tagline')}</p>"
         f'<p class="tisc-concept">Demo / Concept – not an official TGSPDCL service</p>'
         f"</div>",

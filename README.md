@@ -1,5 +1,5 @@
 ---
-title: Mee Vidyut Billu Sahayakudu
+title: Billu Mitra
 emoji: ⚡
 colorFrom: teal
 colorTo: green
@@ -11,7 +11,7 @@ license: mit
 short_description: Telugu electricity bill explainer for Telangana (TISC #13)
 ---
 
-# మీ విద్యుత్ బిల్లు సహాయకుడు
+# బిల్లు మిత్ర
 
 Telugu-first assistant for TGSPDCL / TGNPDCL domestic bills (TISC problem statement #13).  
 Upload a bill photo → structured extract → Telugu explanation of every charge, why the bill jumped, late-reading slab push, 100/200-unit cliff, true-up (30p → 50p), and a next-month forecast.

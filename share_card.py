@@ -312,7 +312,7 @@ def make_share_png(
     d.rounded_rectangle((40, 40, W - 40, H - 40), radius=28, fill=WHITE, outline=LINE, width=2)
     d.rounded_rectangle((40, 40, W - 40, 200), radius=28, fill=TEAL)
     d.rectangle((40, 140, W - 40, 200), fill=TEAL)
-    _draw_mixed(d, (70, 62), "మీ విద్యుత్ బిల్లు", 36, WHITE, bold=True)
+    _draw_mixed(d, (70, 62), "బిల్లు మిత్ర", 36, WHITE, bold=True)
     d.text((70, 120), CONCEPT, font=_lat(18), fill=(220, 240, 236))
 
     # Demo pill
@@ -482,13 +482,13 @@ async function go() {{
     const resp = await fetch("data:image/png;base64," + P.b64);
     const blob = await resp.blob();
     const file = new File([blob], "telugu-bill-summary.png", {{type: "image/png"}});
-    const data = {{files: [file], title: "మీ విద్యుత్ బిల్లు", text: P.text}};
+    const data = {{files: [file], title: "బిల్లు మిత్ర", text: P.text}};
     if (navigator.canShare && navigator.canShare({{files: [file]}})) {{
       await navigator.share(data);
       return;
     }}
     if (navigator.share) {{
-      await navigator.share({{title: "మీ విద్యుత్ బిల్లు", text: P.text}});
+      await navigator.share({{title: "బిల్లు మిత్ర", text: P.text}});
       return;
     }}
   }} catch (e) {{

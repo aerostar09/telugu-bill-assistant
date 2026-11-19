@@ -12,7 +12,7 @@ from typing import Any, Optional
 TARIFF_VERSION = "FY 2026-27 TGERC"
 
 TERMS = {
-    "app_title": "మీ విద్యుత్ బిల్లు సహాయకుడు",
+    "app_title": "బిల్లు మిత్ర",
     "app_tagline": "బిల్లు ఫోటో పెడితే ఈ నెల మొత్తం, ఎందుకు పెరిగింది, వచ్చే నెల అంచనా చూపిస్తాం.",
     "tab_citizen": "పౌరుడు / Citizen",
     "tab_whatsapp": "📲 షేర్ / WhatsApp",
@@ -31,6 +31,9 @@ TERMS = {
     "upload_button": "బిల్లు చదవండి",
     "upload_hint": "స్పష్టమైన JPG లేదా PNG పెట్టండి. పేరు, ఫోన్, చిరునామా స్క్రీన్‌పై చూపించం.",
     "this_month_bill": "ఈ నెల బిల్లు",
+    "you_pay": "మీరు కట్టాల్సింది",
+    "last_date": "చివరి తేదీ",
+    "powered_by_sarvam": "Powered by Sarvam AI",
     "units": "యూనిట్లు",
     "due_date": "చెల్లించాల్సిన తేదీ",
     "confidence": "నమ్మకం",

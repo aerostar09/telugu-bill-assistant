@@ -54,7 +54,7 @@ CHAT_CSS = """
 """
 
 MENU_TE = (
-    "నమస్తే! నేను బిల్లు వివరణ సహాయకుడు (సిమ్యులేషన్).\n"
+    "నమస్తే! నేను బిల్లు మిత్ర (సిమ్యులేషన్).\n"
     "ఏం కావాలి?\n"
     "1) బిల్లు వివరణ (Explain my bill)\n"
     "2) సీనారియో A / B / C చూడండి\n"
@@ -165,7 +165,7 @@ def _render_messages(msgs: List[Dict[str, Any]], audio_uri: str, thumb_uri: str)
         )
     return (
         '<div class="wa-frame" data-testid="wa-frame">'
-        '<div class="wa-head">బిల్లు సహాయకుడు'
+        '<div class="wa-head">బిల్లు మిత్ర'
         f"<small>WhatsApp డెమో · {CONCEPT_EN}</small></div>"
         f'<div class="wa-body">{"".join(bubbles)}</div></div>'
     )

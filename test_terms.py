@@ -14,6 +14,12 @@ class TermsTests(unittest.TestCase):
             self.assertIn(key, TERMS)
             self.assertTrue(t(key).strip())
 
+    def test_app_title(self):
+        self.assertEqual(t("app_title"), "బిల్లు మిత్ర")
+        self.assertEqual(t("you_pay"), "మీరు కట్టాల్సింది")
+        self.assertEqual(t("last_date"), "చివరి తేదీ")
+        self.assertEqual(t("powered_by_sarvam"), "Powered by Sarvam AI")
+
     def test_tariff_version(self):
         self.assertEqual(TARIFF_VERSION, "FY 2026-27 TGERC")
         self.assertEqual(t("tariff_version"), TARIFF_VERSION)

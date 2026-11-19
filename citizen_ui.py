@@ -1,6 +1,7 @@
 """Citizen-page section renderers. Tariff math stays in tariff/forecast/dashboard."""
 from __future__ import annotations
 
+import html as _html
 from typing import Any, Dict, List, Optional
 
 from dashboard import _inr, _u, whatsapp_link, load_feedback, save_feedback
@@ -17,34 +18,101 @@ from terms import t, rupees_display, TARIFF_VERSION
 from bill_lines import payable_amount
 from receipt_ui import render_receipt_card, render_units_bar, next_units_cliff
 
-def render_hero_card(model: Dict[str, Any], corrections: Optional[List[str]] = None) -> None:
-    import streamlit as st
+_CHECK_ICON = (
+    '<svg viewBox="0 0 20 20" fill="none" aria-hidden="true">'
+    '<circle cx="10" cy="10" r="9" stroke="#0b6b4f" stroke-width="1.6"/>'
+    '<path d="M6 10.2l2.4 2.4L14.2 7" stroke="#0b6b4f" stroke-width="1.8" '
+    'stroke-linecap="round" stroke-linejoin="round"/></svg>'
+)
+_WARN_ICON = (
+    '<svg viewBox="0 0 20 20" fill="none" aria-hidden="true">'
+    '<path d="M10 2.5L18.5 17H1.5L10 2.5z" stroke="#b54708" stroke-width="1.5" stroke-linejoin="round"/>'
+    '<path d="M10 8v4.2" stroke="#b54708" stroke-width="1.6" stroke-linecap="round"/>'
+    '<circle cx="10" cy="14.5" r="0.9" fill="#b54708"/></svg>'
+)
+
+
+def bill_dashboard_view(
+    model: Dict[str, Any],
+    corrections: Optional[List[str]] = None,
+) -> Dict[str, Any]:
+    """Layout-A / L6 numbers for the bill-tab hero. Pure, testable."""
     bill = model["bill"]
     conf = confidence_level(model.get("checks"), corrections, bill.get("image_quality"))
     units = bill.get("units")
-    due = bill.get("due_date") or "—"
-    unit_bit = f"{int(units)} {t('units')}" if units is not None else ""
+    if units is None:
+        units_label = "—"
+    else:
+        try:
+            units_f = float(units)
+            units_label = str(int(units_f)) if units_f.is_integer() else str(units_f)
+        except (TypeError, ValueError):
+            units_label = "—"
+    due_raw = bill.get("due_date")
+    due = str(due_raw).strip() if due_raw not in (None, "") else ""
+    if not due or due.lower() == "none":
+        due = "—"
     payable = payable_amount(bill)
     gj = model.get("gruha_jyothi") or {}
-    if gj.get("mode") == "free":
+    if gj.get("mode") == "free" and gj.get("payable") is not None:
         payable = gj.get("payable")
+    checks = model.get("checks") or {}
+    ok = checks.get("consumer_ok")
+    if ok is None:
+        ok = checks.get("ok")
+    if ok:
+        banner_kind = "ok"
+        banner_te = t("calc_matches")
+    else:
+        banner_kind = "bad"
+        banner_te = checks.get("message_te") or t("calc_mismatch")
+    return {
+        "units_label": units_label,
+        "due": due,
+        "payable": payable,
+        "payable_display": rupees_display(payable) if payable is not None else "—",
+        "conf": conf,
+        "match_ok": bool(ok),
+        "banner_kind": banner_kind,
+        "banner_te": banner_te or "",
+    }
+
+
+def render_dashboard_hero(model: Dict[str, Any], corrections: Optional[List[str]] = None) -> None:
+    import streamlit as st
+    view = bill_dashboard_view(model, corrections)
+    conf = view["conf"]
     pill = ""
     if conf.get("show_on_hero") and conf.get("label_te"):
+        css = _html.escape(conf.get("css") or "")
         pill = (
-            f'<span class="badge {conf["css"]}" data-testid="confidence-pill">'
-            f'{conf["label_te"]}</span>'
+            f'<div class="pill {css}" data-testid="confidence-pill">{_html.escape(conf["label_te"])}</div>'
         )
-    st.markdown(
-        f'<div class="bill-hero" data-testid="bill-hero">'
-        f'<div class="bill-hero-label">{t("this_month_bill")}</div>'
-        f'<div class="bill-hero-amt">{rupees_display(payable)}</div>'
-        f'<div class="bill-hero-meta">'
-        f"<span>{unit_bit}</span>"
-        f'<span>{t("due_date")} {due}</span>'
-        f"{pill}"
-        f"</div></div>",
-        unsafe_allow_html=True,
+    card_cls = "pay-card ok" if view["match_ok"] else "pay-card bad"
+    banner_cls = "banner-ok" if view["banner_kind"] == "ok" else "banner-bad"
+    icon = _CHECK_ICON if view["match_ok"] else _WARN_ICON
+    banner = ""
+    if view["banner_te"]:
+        banner = f'<div class="{banner_cls}" data-testid="trust-verdict">{_html.escape(view["banner_te"])}</div>'
+    html = (
+        f'<div class="hero-row" data-testid="bill-hero">'
+        f'<div class="side-tile units"><div class="k">{_html.escape(t("units"))}</div>'
+        f'<div class="v">{_html.escape(view["units_label"])}</div></div>'
+        f'<div class="{card_cls}">'
+        f'<div class="pay-head"><span class="ico">{icon}</span>'
+        f'<span>{_html.escape(t("you_pay"))}</span></div>'
+        f'<div class="pay">{_html.escape(view["payable_display"])}</div>'
+        f"{pill}{banner}"
+        f"</div>"
+        f'<div class="side-tile due"><div class="k">{_html.escape(t("last_date"))}</div>'
+        f'<div class="v">{_html.escape(view["due"])}</div></div>'
+        f"</div>"
     )
+    st.markdown(html, unsafe_allow_html=True)
+
+
+def render_hero_card(model: Dict[str, Any], corrections: Optional[List[str]] = None) -> None:
+    render_dashboard_hero(model, corrections)
 
 
 def render_match_banner(model: Dict[str, Any]) -> None:
@@ -77,8 +145,11 @@ def render_gruha_jyothi_note(model: Dict[str, Any]) -> None:
     text = " ".join(p for p in parts if p)
     if gj.get("mode") == "over":
         st.warning(text)
-    else:
-        st.info(text)
+        return
+    st.markdown(
+        f'<div class="gj-note">{_html.escape(text)}</div>',
+        unsafe_allow_html=True,
+    )
 
 
 def render_top_reasons(model: Dict[str, Any], max_n: int = 3) -> List[Dict[str, Any]]:
@@ -111,16 +182,30 @@ def render_main_understand(
     corrections: Optional[List[str]] = None,
     voice_text: Optional[str] = None,
 ) -> None:
-    """Minimal mobile-first result: hero, reasons (max 3), voice, match banner."""
+    """L6 bill-tab dashboard: units | payable | due, actions, charges, estimate."""
     import streamlit as st
     from voice import render_voice_note
+    from forecast import consumer_forecast_range, format_rupee_range
 
-    render_hero_card(model, corrections)
-    render_match_banner(model)
+    render_dashboard_hero(model, corrections)
     if model.get("usage_jump"):
         st.warning(model["usage_jump"]["text_te"])
+
+    rng = consumer_forecast_range(forecast=model.get("forecast"))
+    spoken = voice_text or build_voice_summary(
+        model["bill"], forecast_range=rng, gj=model.get("gruha_jyothi")
+    )
+    # Sticky dock is unreliable in Streamlit iframes; actions sit under the hero.
+    c_voice, c_wa = st.columns([1.4, 1])
+    with c_voice:
+        if spoken:
+            render_voice_note(spoken)
+    with c_wa:
+        if st.button("WhatsApp కి పంపండి", width="stretch", key="wa_send_bill"):
+            st.session_state["share_now"] = True
+            st.rerun()
+
     render_gruha_jyothi_note(model)
-    from forecast import consumer_forecast_range, format_rupee_range
     render_receipt_card(model["bill"], gj_mode=(model.get("gruha_jyothi") or {}).get("mode"))
     tu = (model.get("bill") or {}).get("trueup_charges")
     try:
@@ -131,7 +216,6 @@ def render_main_understand(
         from draft_features import render_trueup_what_is_it
         render_trueup_what_is_it()
     render_units_bar(model["bill"])
-    rng = consumer_forecast_range(forecast=model.get("forecast"))
     if rng:
         band = format_rupee_range(rng["low"], rng["high"])
         from gruha_jyothi import gj_forecast_note_te
@@ -145,14 +229,7 @@ def render_main_understand(
         )
     if model.get("gj_forecast_warn"):
         st.warning(model["gj_forecast_warn"])
-    reasons = render_top_reasons(model, max_n=3)
-    spoken = voice_text or build_voice_summary(
-        model["bill"], reasons=reasons, forecast_range=rng, gj=model.get("gruha_jyothi")
-    )
-    if spoken:
-        st.markdown(f"##### {t('voice')}")
-        render_voice_note(spoken)
-    st.caption("చిత్రం డౌన్‌లోడ్ / WhatsApp షేర్ → 📲 షేర్ ట్యాబ్.")
+    render_top_reasons(model, max_n=3)
 
 
 def render_jump_card(model: Dict[str, Any]) -> None:
