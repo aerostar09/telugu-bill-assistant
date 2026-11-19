@@ -10,6 +10,8 @@ from dashboard import build_dashboard_model
 from forecast import forecast_display_range
 from self_checks import run_all_checks
 from terms import word_count
+from test_gjs_subsidy import gj_bill
+from test_lt_notice import lt_notice
 
 
 class VoiceTests(unittest.TestCase):
@@ -53,13 +55,63 @@ class VoiceSummaryLengthTests(unittest.TestCase):
         text = build_voice_summary(model["bill"], reasons=reasons, forecast_range=rng)
         n = word_count(text)
         self.assertLessEqual(n, VOICE_MAX_WORDS)
-        self.assertLessEqual(n, 60)
+        self.assertEqual(
+            text,
+            "ఈ నెల బిల్లు 757 రూపాయలు. 154 యూనిట్లు వాడారు. చెల్లించాల్సిన తేదీ 20-11-2026.",
+        )
         self.assertIn("757", text)
         self.assertIn("154", text)
         self.assertIn("రూపాయలు", text)
         # no paise precision, no long template dump
         self.assertNotIn("599.20", text)
         self.assertNotIn("కస్టమర్ ఛార్జీ", text)
+        self._assert_voice_is_only_three_facts(text, reasons)
+
+    def _assert_voice_is_only_three_facts(self, text, reasons=None):
+        self.assertNotIn("లెక్క సరిపోయింది", text)
+        self.assertNotIn("స్కీమ్ లేకపోతే", text)
+        self.assertNotIn("వచ్చే నెల అంచనా", text)
+        self.assertNotIn("వచ్చే నెల కూడా 200", text)
+        self.assertNotIn("గృహ జ్యోతి వల్ల", text)
+        self.assertNotIn("ట్రూ-అప్", text)
+        self.assertNotIn("ట్రూ అప్", text)
+        self.assertNotIn("ఆలస్య రీడింగ్", text)
+        if reasons:
+            for r in reasons:
+                self.assertNotIn(r["voice_te"], text)
+
+    def test_rupees_757_script(self):
+        text = build_voice_summary(lt_notice())
+        self.assertEqual(
+            text,
+            "ఈ నెల బిల్లు 757 రూపాయలు. 154 యూనిట్లు వాడారు. చెల్లించాల్సిన తేదీ 20-11-26.",
+        )
+        self._assert_voice_is_only_three_facts(text)
+
+    def test_gjs_zero_bill_script(self):
+        b = gj_bill()
+        from gruha_jyothi import gruha_jyothi_view
+        text = build_voice_summary(b, gj=gruha_jyothi_view(b, False))
+        self.assertEqual(
+            text,
+            "ఈ నెల బిల్లు 0 రూపాయలు. 132 యూనిట్లు వాడారు. చెల్లించాల్సిన తేదీ 17/09/2026.",
+        )
+        self.assertNotIn("602", text)
+        self._assert_voice_is_only_three_facts(text)
+
+    def test_missing_due_date(self):
+        b = dict(lt_notice())
+        b["due_date"] = None
+        text = build_voice_summary(b)
+        self.assertEqual(
+            text,
+            "ఈ నెల బిల్లు 757 రూపాయలు. 154 యూనిట్లు వాడారు. "
+            "చెల్లించాల్సిన తేదీ బిల్లులో కనిపించలేదు, బిల్లు చూసుకోండి.",
+        )
+        self.assertNotIn("చెల్లించాల్సిన తేదీ 20-11-26", text)
+        blank = dict(lt_notice())
+        blank["due_date"] = "  "
+        self.assertIn("కనిపించలేదు", build_voice_summary(blank))
 
     def test_tempo_default_and_ffmpeg_helper(self):
         self.assertGreaterEqual(voice.VOICE_TEMPO, 1.25)

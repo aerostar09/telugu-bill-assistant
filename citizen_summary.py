@@ -194,45 +194,34 @@ def build_voice_summary(
     forecast_range: Optional[Dict[str, Any]] = None,
     gj: Optional[Dict[str, Any]] = None,
 ) -> str:
-    """15–25s Telugu script: amount, units, one main reason, next-bill range.
+    """Short Telugu voice script: payable amount, units, due date only.
 
-    A printed GJS Subsidy line (Gruha Jyothi zero bill) is always honoured:
-    the spoken amount is the payable net, never the gross Bill Amount.
+    On-screen copy (true-up, late reading, why-it-changed, forecast,
+    scheme-without-subsidy) is unchanged. Callers may still pass reasons /
+    forecast_range; they are ignored here. A printed GJS Subsidy line or
+    Gruha Jyothi free-mode payable is spoken as the net (₹0 on a zero bill),
+    never the gross Bill Amount.
     """
-    from bill_lines import gjs_subsidy_amount, payable_amount
+    from bill_lines import payable_amount
     parts: List[str] = []
-    gjs = gjs_subsidy_amount(bill)
-    zero_view = gjs is not None or (gj or {}).get("mode") == "free"
-    if zero_view:
-        pay = payable_amount(bill) if gjs is not None else (gj or {}).get("payable")
-        gross = _amt(bill.get("bill_amount"))
-        parts.append(f"గృహ జ్యోతి వల్ల ఈ నెల చెల్లించాల్సింది {rupees_spoken(pay or 0)}.")
-        if gross is not None:
-            parts.append(f"స్కీమ్ లేకపోతే {rupees_spoken(gross)}.")
-        total = None
-    else:
-        total = _amt(bill.get("bill_amount"))
-        if total is None:
-            total = _amt(bill.get("total_due"))
-    if total is not None:
-        parts.append(f"ఈ నెల బిల్లు {rupees_spoken(total)}.")
+    pay = payable_amount(bill)
+    if (gj or {}).get("mode") == "free" and (gj or {}).get("payable") is not None:
+        pay = (gj or {}).get("payable")
+    if pay is None:
+        pay = _amt(bill.get("bill_amount"))
+        if pay is None:
+            pay = _amt(bill.get("total_due"))
+    if pay is not None:
+        parts.append(f"ఈ నెల బిల్లు {rupees_spoken(pay)}.")
     units = _amt(bill.get("units"))
     if units is not None:
         parts.append(f"{int(round(units))} యూనిట్లు వాడారు.")
-    if reasons:
-        parts.append(reasons[0]["voice_te"])
-    if zero_view and units is not None and units <= 200:
-        parts.append("వచ్చే నెల కూడా 200 యూనిట్ల లోపు ఉంటే బిల్లు సున్నా.")
-    elif forecast_range and forecast_range.get("low") is not None:
-        lo = int(forecast_range["low"])
-        hi = int(forecast_range["high"])
-        parts.append(f"వచ్చే నెల అంచనా {lo} నుంచి {hi} రూపాయలు.")
-    due = bill.get("due_date")
+    due = str(bill.get("due_date") or "").strip()
     if due:
         parts.append(f"చెల్లించాల్సిన తేదీ {due}.")
-    parts.append("లెక్క సరిపోయింది.")
+    else:
+        parts.append("చెల్లించాల్సిన తేదీ బిల్లులో కనిపించలేదు, బిల్లు చూసుకోండి.")
     text = " ".join(p.strip() for p in parts if p and p.strip())
-    # Hard cap so a future reason cannot inflate the clip.
     words = text.split()
     if len(words) > VOICE_MAX_WORDS:
         text = " ".join(words[:VOICE_MAX_WORDS])

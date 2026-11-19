@@ -159,9 +159,13 @@ class SurfacesTests(unittest.TestCase):
     def test_voice_says_zero(self):
         b = gj_bill()
         text = build_voice_summary(b, gj=gruha_jyothi_view(b, False))
-        self.assertIn("చెల్లించాల్సింది 0 రూపాయలు", text)
-        self.assertIn("స్కీమ్ లేకపోతే 602 రూపాయలు", text)
+        self.assertEqual(
+            text,
+            "ఈ నెల బిల్లు 0 రూపాయలు. 132 యూనిట్లు వాడారు. చెల్లించాల్సిన తేదీ 17/09/2026.",
+        )
         self.assertNotIn("ఈ నెల బిల్లు 602", text)
+        self.assertNotIn("స్కీమ్ లేకపోతే", text)
+        self.assertNotIn("గృహ జ్యోతి వల్ల", text)
 
     def test_voice_non_gjs_unchanged(self):
         self.assertIn("ఈ నెల బిల్లు 757 రూపాయలు", build_voice_summary(lt_notice()))
