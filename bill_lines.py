@@ -29,6 +29,28 @@ CHARGE_ROWS: List[Tuple[str, str, str]] = [
 # Stored as a POSITIVE amount (like `subsidy`); always shown with a minus.
 # Not part of the charge-line sum (that still adds up to Bill Amount).
 GJS_ROW: Tuple[str, str, str] = ("gjs_subsidy", "గృహ జ్యోతి సబ్సిడీ", "ప్రభుత్వం భరించిన మొత్తం (GJS)")
+
+# Short English under the Telugu charge name (receipt UI).
+CHARGE_LABELS_EN = {
+    "energy_charges": "Energy",
+    "fixed_charges": "Fixed charge",
+    "customer_charges": "Customer charge",
+    "electricity_duty": "Electricity duty",
+    "interest_on_ed": "Interest on duty",
+    "surcharge": "Late fee",
+    "trueup_charges": "True-up",
+    "fsa_fca": "Fuel surcharge",
+    "subsidy": "Subsidy",
+    "adjustment": "Adjustment",
+    "interest_on_cd": "Interest on deposit",
+    "loss_gain": "Rounding",
+    "gjs_subsidy": "Gruha Jyothi subsidy",
+    "arrears_as_on": "Arrears (as on)",
+    "arrears_after": "Arrears (after)",
+    "arrears": "Arrears",
+    "acd_due": "ACD due",
+    "acd_surcharge": "ACD surcharge",
+}
 REDUCTION_KEYS = ("subsidy", "gjs_subsidy")
 
 AFTER_BILL_ROWS: List[Tuple[str, str, str]] = [
@@ -211,6 +233,8 @@ def nonzero_rows(bill: Dict[str, Any]) -> List[Dict[str, Any]]:
         if amt is None or abs(amt) < 0.005:
             continue
         out.append({"key": key, "name_te": name, "meaning_te": meaning, "amount": round(amt, 2)})
+    for row in out:
+        row["name_en"] = CHARGE_LABELS_EN.get(row["key"], "")
     return out
 
 

@@ -878,10 +878,18 @@ def main() -> None:
             )
     except Exception:
         badge = ""
+    brand_mark = (
+        '<svg class="brand-mark" viewBox="0 0 40 40" aria-hidden="true">'
+        '<rect width="40" height="40" rx="12" fill="#16a34a"/>'
+        '<path d="M22.8 7.2L13 20.2h6.2l-3.2 12.2 13.2-16.2h-6.4l-1-9z" fill="#fff"/>'
+        "</svg>"
+    )
     st.markdown(
         f'<div class="tisc-hero">'
         f'<div class="tisc-hero-row">'
-        f"<h1>{t('app_title')}</h1>"
+        f'<div class="brand">{brand_mark}'
+        f'<div class="brand-text"><h1>{t("app_title")}</h1>'
+        f'<div class="brand-en">{t("app_title_en")}</div></div></div>'
         f"{badge}"
         f"</div>"
         f"<p>{t('app_tagline')}</p>"

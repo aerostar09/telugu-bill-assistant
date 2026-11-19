@@ -138,157 +138,198 @@ div[data-testid="stSidebarCollapsedControl"] { display: none !important; }
 .forecast-one{font-size:0.95rem;color:#0f3d38;background:#f0fdfa;border:1px solid #c5ebe3;border-radius:12px;padding:.45rem .7rem;margin:0 0 0.5rem;line-height:1.2;}
 div[data-testid="stMetricValue"] { font-family: "Noto Sans", "Noto Sans Telugu", sans-serif !important; }
 
-/* L6 dashboard + header badge */
+/* Design-1 header + bill tab */
+.tisc-hero { margin: 0 0 0.65rem 0; }
 .tisc-hero-row { display: flex; align-items: flex-start; justify-content: space-between; gap: 0.55rem; }
-.tisc-hero-row h1 { flex: 1; min-width: 0; margin: 0 0 .2rem 0; }
+.brand { display: flex; align-items: center; gap: 0.55rem; min-width: 0; flex: 1; }
+.brand-mark { width: 40px; height: 40px; flex-shrink: 0; display: block; }
+.brand-text h1 {
+  font-size: 1.62rem; font-weight: 800; color: #0b5c3a;
+  margin: 0; line-height: 1.1; letter-spacing: -0.02em;
+}
+.brand-en { font-size: 0.84rem; font-weight: 650; color: #0b5c3a; margin-top: 0.08rem; line-height: 1.1; }
+.tisc-hero p { color: #4b635f; margin: 0.35rem 0 0 0; font-size: 0.9rem; }
 .sarvam-badge {
-  display: inline-block; flex-shrink: 0; align-self: flex-start; margin-top: 0.18rem;
+  display: inline-block; flex-shrink: 0; align-self: flex-start; margin-top: 0.2rem;
   font-size: 0.68rem; font-weight: 650; letter-spacing: 0.01em; line-height: 1.2;
-  color: #5b3d00; background: #fff3bf; border: 1px solid #e8d48b;
-  border-radius: 999px; padding: 0.28rem 0.6rem; text-decoration: none; white-space: nowrap;
+  color: #3a5a52; background: #ffffff; border: 1px solid #d5e5df;
+  border-radius: 999px; padding: 0.32rem 0.7rem; text-decoration: none; white-space: nowrap;
 }
-.sarvam-badge:hover { background: #ffe8a3; color: #5b3d00; text-decoration: none; }
+.sarvam-badge:hover { background: #f4faf7; color: #0b5c3a; text-decoration: none; }
 
-.hero-row {
+.d1-stack { margin: 0 0 0.7rem 0; }
+.d1-hero {
+  border-radius: 22px; padding: 1.05rem 1rem 1rem;
+  color: #fff; overflow: hidden;
+}
+.d1-hero-gj {
+  background: linear-gradient(135deg, #5ee0a8 0%, #2ecf8a 38%, #17b56f 100%);
+}
+.d1-hero-regular {
+  background: linear-gradient(160deg, #173a5c 0%, #0f2d4a 55%, #0c2740 100%);
+}
+.d1-hero-main {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 2fr) minmax(0, 1fr);
-  gap: 8px;
-  margin: 0 0 10px 0;
+  grid-template-columns: minmax(0, 1.15fr) auto;
+  gap: 0.5rem;
   align-items: center;
 }
-.side-tile {
-  background: #fff;
-  border-radius: 14px;
-  padding: 12px 6px 13px;
-  border: 1px solid #e4eeeb;
-  text-align: center;
-  min-width: 0;
-  overflow: visible;
+.d1-hero-pay .k-te {
+  font-size: 1.22rem; font-weight: 800; line-height: 1.2; color: #fff;
 }
-.side-tile.units { border-top: 3px solid #1570ef; }
-.side-tile.due { border-top: 3px solid #dc6803; }
-.side-tile .k {
-  font-size: 11px;
-  font-weight: 650;
-  color: #4d625e;
-  line-height: 1.35;
-  margin-bottom: 4px;
+.d1-hero-pay .k-en {
+  font-size: 0.86rem; font-weight: 600; color: rgba(255,255,255,0.85);
+  margin: 0.05rem 0 0.2rem;
 }
-.side-tile .v {
+.d1-hero .pay {
   font-family: "Noto Sans", "Noto Sans Telugu", sans-serif;
-  font-weight: 700;
-  font-size: 22px;
-  color: #12221f;
-  line-height: 1.15;
-  letter-spacing: -0.4px;
+  font-size: 3.05rem; font-weight: 800; color: #fff;
+  line-height: 0.95; letter-spacing: -0.06em;
+  margin: 0.1rem 0 0.55rem; white-space: nowrap;
 }
-.side-tile .v.date {
-  font-size: 12.5px;
-  letter-spacing: -0.3px;
-  white-space: nowrap;
-  padding-top: 2px;
+.d1-hero .pay.pay-mid { font-size: 2.15rem; letter-spacing: -0.04em; }
+.d1-hero .pay.pay-long { font-size: 1.55rem; letter-spacing: -0.03em; }
+.scheme-pill {
+  display: inline-flex; align-items: center; gap: 0.4rem;
+  background: #fff; color: #0b5c3a;
+  border-radius: 999px; padding: 0.35rem 0.7rem 0.35rem 0.45rem;
+  max-width: 100%;
 }
+.scheme-pill .scheme-ico { display: flex; flex-shrink: 0; }
+.scheme-copy { display: flex; flex-direction: column; line-height: 1.15; }
+.scheme-copy b { font-size: 0.78rem; font-weight: 800; color: #0b5c3a; }
+.scheme-copy small { font-size: 0.66rem; font-weight: 600; color: #3f7a62; }
 
-.pay-card {
-  background: #fff;
-  border-radius: 16px;
-  padding: 12px 8px 10px;
-  border: 1px solid #e4eeeb;
-  border-top: 3px solid #0b6b4f;
-  text-align: center;
-  min-width: 0;
-  overflow: visible;
+.d1-ring { display: flex; justify-content: center; }
+.ring-circle {
+  width: 128px; height: 128px; border-radius: 50%;
+  border: 7px solid rgba(255,255,255,0.88);
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  position: relative; box-sizing: border-box;
 }
-.pay-card.bad { border-top-color: #dc6803; }
-.pay-card .hd {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 6px;
-  margin-bottom: 2px;
-}
-.pay-card .ico {
-  width: 40px;
-  height: 40px;
-  border-radius: 12px;
-  background: #E7F8F1;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-}
-.pay-card.bad .ico { background: #FEF0C7; }
-.pay-card .ico svg { display: block; width: 24px; height: 24px; }
-.pay-card .title {
-  font-size: 15px;
-  font-weight: 700;
-  line-height: 1.35;
-  color: #12221f;
-}
-.pay-card .pay {
+.d1-hero-regular .ring-circle { border-color: #5eead4; }
+.ring-num {
   font-family: "Noto Sans", "Noto Sans Telugu", sans-serif;
-  font-size: 58px;
-  font-weight: 700;
-  color: #084c39;
-  line-height: 0.95;
-  letter-spacing: -1.5px;
-  margin: 4px 0 8px;
+  font-size: 2.05rem; font-weight: 800; color: #fff; line-height: 1;
+  letter-spacing: -0.04em;
+}
+.ring-cap {
+  font-size: 0.68rem; font-weight: 700; color: rgba(255,255,255,0.92);
+  margin-top: 0.15rem; text-align: center; line-height: 1.15;
   white-space: nowrap;
 }
-.pay-card .pay.pay-mid { font-size: 34px; letter-spacing: -0.8px; }
-.pay-card .pay.pay-long { font-size: 24px; letter-spacing: -0.5px; }
-.pay-card.bad .pay { color: #93370d; }
-.pay-card .pill {
-  display: inline-block;
-  background: #e7f8f1;
-  color: #0b6b4f;
-  font-size: 12px;
-  font-weight: 700;
-  padding: 3px 10px;
-  border-radius: 999px;
-  line-height: 1.5;
-  margin: 0 0 8px;
+.ring-leaf {
+  position: absolute; bottom: -2px; left: 50%; transform: translateX(-50%);
+  width: 22px; height: 22px; border-radius: 50%;
+  background: #fff; display: flex; align-items: center; justify-content: center;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.08);
 }
-.pay-card .pill.badge-green { background: #e7f8f1; color: #0b6b4f; }
-.pay-card .pill.badge-red { background: #fee4e2; color: #b42318; }
-.pay-card .banner-ok, .pay-card .banner-bad {
-  font-size: 12px;
-  font-weight: 700;
-  line-height: 1.45;
-  padding: 8px;
-  border-radius: 10px;
-  text-align: left;
-}
-.pay-card .banner-ok { background: #ecfdf3; color: #05603a; border: 1px solid #abefc6; }
-.pay-card .banner-bad { background: #fff7ed; color: #9a3412; border: 1px solid #fed7aa; }
+.d1-hero-regular .ring-leaf { background: #e6fffa; }
+.ring-leaf svg { width: 13px; height: 13px; display: block; }
 
+.d1-trust {
+  margin: 0.4rem 0 0.55rem; font-size: 0.75rem; color: #5b726e;
+  line-height: 1.35; text-align: left;
+}
+.d1-trust .trust-pill, .d1-trust .trust-msg { font-weight: 650; }
+.d1-trust .trust-ok, .d1-trust .badge-green { color: #05603a; }
+.d1-trust .trust-bad, .d1-trust .badge-red { color: #b42318; }
+
+.d1-tiles {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 0.55rem;
+}
+.d1-tile {
+  background: #fff; border: 1px solid #e4eeeb; border-radius: 16px;
+  padding: 0.7rem 0.75rem; display: flex; align-items: center; gap: 0.55rem;
+  min-width: 0;
+}
+.d1-tile .tile-ico {
+  width: 36px; height: 36px; border-radius: 50%;
+  background: #ecfdf3; color: #16a34a;
+  display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+}
+.d1-tile .tile-copy { min-width: 0; }
+.d1-tile .k-te { font-size: 0.92rem; font-weight: 800; color: #12221f; line-height: 1.15; }
+.d1-tile .k-en { font-size: 0.72rem; font-weight: 600; color: #6b7c78; line-height: 1.15; }
+.d1-tile .v {
+  font-family: "Noto Sans", "Noto Sans Telugu", sans-serif;
+  font-size: 1.2rem; font-weight: 800; color: #12221f; line-height: 1.15; margin-top: 0.12rem;
+}
+.d1-tile .v.date { font-size: 1.02rem; }
+.d1-tile.due-hot {
+  background: #fff7ed; border-color: #fed7aa;
+}
+.d1-tile.due-hot .tile-ico { background: #ffedd5; color: #c2410c; }
+.d1-tile.due-hot .k-te, .d1-tile.due-hot .v { color: #c2410c; }
+.d1-tile.due-hot .k-en { color: #ea580c; }
+
+.receipt {
+  border: 1px solid #e4eeeb; border-radius: 16px;
+  padding: 6px 12px 10px; background: #fff; margin: 0 0 0.55rem 0;
+}
+.rc-row summary {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 9px 0; border-bottom: 1px solid #eef2f1; cursor: pointer;
+  list-style: none; gap: 8px; line-height: 1.2;
+}
+.rc-row summary::-webkit-details-marker { display: none; }
+.rc-lab { flex: 1; min-width: 0; }
+.rc-lab b, .rc-lab small { margin: 0; line-height: 1.2; display: block; }
+.rc-lab b { font-weight: 800; color: #12221f; font-size: 0.95rem; }
+.rc-lab small { font-weight: 500; color: #6b7c78; font-size: 0.75rem; }
+.rc-ico {
+  width: 28px; height: 28px; border-radius: 50%;
+  display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0;
+}
+.rc-amt { font-weight: 800; white-space: nowrap; color: #12221f; }
+.rc-amt.subsidy { color: #15803d; }
+.rc-formula { font-size: 13px; color: #4b635f; padding: 4px 0 8px 36px; line-height: 1.2; }
+.rc-sub {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 8px 0; border-top: 1px dashed #cfd8dc; gap: 8px;
+}
+.rc-total {
+  display: flex; justify-content: space-between; align-items: center;
+  font-size: 1.05rem; font-weight: 800; color: #0f3d38;
+  padding: 10px 0 6px; border-top: 1.5px solid #d7e3df; gap: 8px;
+}
+.rc-total .rc-lab b { font-size: 1.05rem; }
+.gj-tip {
+  background: #fff7ed; border: 1px solid #fed7aa; color: #9a3412;
+  border-radius: 12px; padding: 0.55rem 0.7rem; margin: 0.35rem 0 0.2rem;
+  display: flex; flex-direction: column; gap: 0.12rem;
+}
+.gj-tip b { font-size: 0.82rem; font-weight: 800; line-height: 1.3; }
+.gj-tip small { font-size: 0.72rem; font-weight: 500; color: #c2410c; line-height: 1.3; }
 .gj-note {
   background: #eef4ff; border: 1px solid #c7d7fe; color: #173ea5;
   border-radius: 12px; padding: 0.55rem 0.7rem; font-size: 0.88rem;
   line-height: 1.35; margin: 0 0 0.55rem;
 }
-.units-bar {
-  background: #fff; border: 1px solid #e4eeeb; border-radius: 14px;
-  padding: 0.6rem 0.7rem; margin: 0 0 0.55rem 0;
+.rc-sub { padding-left: 36px; }
+.gj-note {
+  background: #eef4ff; border: 1px solid #c7d7fe; color: #173ea5;
+  border-radius: 12px; padding: 0.55rem 0.7rem; font-size: 0.88rem;
+  line-height: 1.35; margin: 0 0 0.55rem;
 }
-.forecast-one {
-  font-size: 0.95rem; color: #12221f; background: #f7fbf9;
-  border: 1px solid #e4eeeb; border-radius: 14px;
-  padding: 0.65rem 0.75rem; margin: 0 0 0.55rem; line-height: 1.35;
-}
+.rc-sub { padding-left: 36px; }
+
 .st-key-wa_send_bill button:not(:disabled) {
-  background-color: #128C7E !important; color: #ffffff !important; border: 0 !important;
-  white-space: nowrap !important;
+  background-color: #16a34a !important; color: #ffffff !important; border: 0 !important;
+  white-space: nowrap !important; border-radius: 999px !important;
+  font-weight: 700 !important; min-height: 2.6rem !important;
 }
 .st-key-wa_send_bill button:not(:disabled):hover {
-  background-color: #0b554c !important; color: #ffffff !important;
+  background-color: #15803d !important; color: #ffffff !important;
 }
-/* Streamlit stacks columns under ~640px via min-width: calc(100% - 24px). Keep the
-   voice + WhatsApp actions on one row, like the L6 mockup (voice left, WA right). */
+/* Keep voice + WhatsApp on one row at phone widths. */
 div[data-testid="stHorizontalBlock"]:has(.st-key-wa_send_bill) {
   flex-wrap: nowrap !important;
   align-items: flex-end !important;
   gap: 8px !important;
+  background: #fff; border: 1px solid #e4eeeb; border-radius: 16px;
+  padding: 0.45rem 0.55rem 0.55rem;
+  margin: 0 0 0.55rem 0;
 }
 div[data-testid="stHorizontalBlock"]:has(.st-key-wa_send_bill) > [data-testid="stColumn"] {
   min-width: 0 !important;

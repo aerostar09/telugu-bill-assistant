@@ -16,6 +16,7 @@ from citizen_summary import (
 from forecast import forecast_display_range, consumer_forecast_range, format_rupee_range
 from terms import t, rupees_display, format_due_date_display, TARIFF_VERSION
 from bill_lines import payable_amount
+from gruha_jyothi import gj_zero_bill_active
 from receipt_ui import render_receipt_card, render_units_bar, next_units_cliff
 
 _CHECK_ICON = (
@@ -30,6 +31,28 @@ _WARN_ICON = (
     '<path d="M14 8v7" stroke="#fff" stroke-width="2.4" stroke-linecap="round"/>'
     '<circle cx="14" cy="19.2" r="1.3" fill="#fff"/></svg>'
 )
+
+
+
+_LEAF_ICON = (
+    '<svg viewBox="0 0 20 20" width="16" height="16" aria-hidden="true">'
+    '<path fill="#16a34a" d="M4 16c6-1 10-5 12-12-6 1-11 5-12 12z"/>'
+    '<path fill="none" stroke="#0b5c3a" stroke-width="1.2" d="M5 15c3-3 6-6 10-10"/>'
+    '</svg>'
+)
+_BOLT_ICON = (
+    '<svg viewBox="0 0 20 20" width="18" height="18" aria-hidden="true">'
+    '<path fill="#16a34a" d="M11.2 2.2L4.8 11h4.2L7.4 17.8 16 8.6h-4.3L11.2 2.2z"/></svg>'
+)
+_CAL_ICON = (
+    '<svg viewBox="0 0 20 20" width="18" height="18" aria-hidden="true">'
+    '<rect x="3" y="5" width="14" height="12" rx="2" fill="none" stroke="currentColor" stroke-width="1.5"/>'
+    '<path d="M3 8.5h14" stroke="currentColor" stroke-width="1.5"/>'
+    '<path d="M7 3.5v3M13 3.5v3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>'
+    '</svg>'
+)
+
+RING_CAPTION = "యూనిట్లు / units"
 
 
 def payable_size_class(display: str) -> str:
@@ -76,6 +99,7 @@ def bill_dashboard_view(
         banner_kind = "bad"
         banner_te = checks.get("message_te") or t("calc_mismatch")
     payable_display = rupees_display(payable) if payable is not None else "—"
+    theme = "gj" if gj_zero_bill_active(gj) else "regular"
     return {
         "units_label": units_label,
         "due": due,
@@ -86,43 +110,85 @@ def bill_dashboard_view(
         "match_ok": bool(ok),
         "banner_kind": banner_kind,
         "banner_te": banner_te or "",
+        "theme": theme,
+        "show_scheme_pill": theme == "gj",
+        "scheme_pill_te": t("scheme_applied_te") if theme == "gj" else "",
+        "scheme_pill_en": t("scheme_applied_en") if theme == "gj" else "",
+        "ring_caption": RING_CAPTION,
+        "show_due_highlight": theme == "regular",
+        "show_gj_tip": theme == "regular",
     }
+
+
+def dashboard_hero_html(view: Dict[str, Any]) -> str:
+    """Design-1 bill-tab hero + tiles. Pure HTML, testable. No '/ 200' in the ring."""
+    theme = view.get("theme") or "regular"
+    pay_cls = "pay"
+    if view.get("pay_size"):
+        pay_cls += " " + view["pay_size"]
+    pill = ""
+    if view.get("show_scheme_pill"):
+        pill = (
+            f'<div class="scheme-pill" data-testid="scheme-pill">'
+            f'<span class="scheme-ico">{_LEAF_ICON}</span>'
+            f'<span class="scheme-copy"><b>{_html.escape(view.get("scheme_pill_te") or "")}</b>'
+            f'<small>{_html.escape(view.get("scheme_pill_en") or "")}</small></span>'
+            f"</div>"
+        )
+    conf = view.get("conf") or {}
+    trust_bits = []
+    if conf.get("show_on_hero") and conf.get("label_te"):
+        css = _html.escape(conf.get("css") or "")
+        trust_bits.append(
+            f'<span class="trust-pill {css}" data-testid="confidence-pill">'
+            f'{_html.escape(conf["label_te"])}</span>'
+        )
+    if view.get("banner_te"):
+        kind = "ok" if view.get("banner_kind") == "ok" else "bad"
+        trust_bits.append(
+            f'<span class="trust-msg trust-{kind}" data-testid="trust-verdict">'
+            f'{_html.escape(view["banner_te"])}</span>'
+        )
+    trust = ""
+    if trust_bits:
+        trust = f'<div class="d1-trust">{" · ".join(trust_bits)}</div>'
+    due_cls = "d1-tile due due-hot" if view.get("show_due_highlight") else "d1-tile due"
+    cap = view.get("ring_caption") or RING_CAPTION
+    html = (
+        f'<div class="d1-stack" data-testid="bill-hero">'
+        f'<div class="d1-hero d1-hero-{_html.escape(theme)}">'
+        f'<div class="d1-hero-main">'
+        f'<div class="d1-hero-pay">'
+        f'<div class="k-te">{_html.escape(t("you_pay"))}</div>'
+        f'<div class="k-en">{_html.escape(t("you_pay_en"))}</div>'
+        f'<div class="{pay_cls}">{_html.escape(view["payable_display"])}</div>'
+        f"{pill}"
+        f"</div>"
+        f'<div class="d1-ring" data-testid="units-ring">'
+        f'<div class="ring-circle">'
+        f'<div class="ring-num">{_html.escape(view["units_label"])}</div>'
+        f'<div class="ring-cap">{_html.escape(cap)}</div>'
+        f'<div class="ring-leaf" aria-hidden="true">{_LEAF_ICON}</div>'
+        f"</div></div></div></div>"
+        f"{trust}"
+        f'<div class="d1-tiles">'
+        f'<div class="d1-tile units"><span class="tile-ico">{_BOLT_ICON}</span>'
+        f'<div class="tile-copy"><div class="k-te">{_html.escape(t("units"))}</div>'
+        f'<div class="k-en">{_html.escape(t("units_en"))}</div>'
+        f'<div class="v">{_html.escape(view["units_label"])}</div></div></div>'
+        f'<div class="{due_cls}"><span class="tile-ico">{_CAL_ICON}</span>'
+        f'<div class="tile-copy"><div class="k-te">{_html.escape(t("last_date"))}</div>'
+        f'<div class="k-en">{_html.escape(t("last_date_en"))}</div>'
+        f'<div class="v date">{_html.escape(view["due"])}</div></div></div>'
+        f"</div></div>"
+    )
+    return html
 
 
 def render_dashboard_hero(model: Dict[str, Any], corrections: Optional[List[str]] = None) -> None:
     import streamlit as st
     view = bill_dashboard_view(model, corrections)
-    conf = view["conf"]
-    pill = ""
-    if conf.get("show_on_hero") and conf.get("label_te"):
-        css = _html.escape(conf.get("css") or "")
-        pill = (
-            f'<div class="pill {css}" data-testid="confidence-pill">{_html.escape(conf["label_te"])}</div>'
-        )
-    card_cls = "pay-card ok" if view["match_ok"] else "pay-card bad"
-    banner_cls = "banner-ok" if view["banner_kind"] == "ok" else "banner-bad"
-    icon = _CHECK_ICON if view["match_ok"] else _WARN_ICON
-    pay_cls = "pay"
-    if view.get("pay_size"):
-        pay_cls += " " + view["pay_size"]
-    banner = ""
-    if view["banner_te"]:
-        banner = f'<div class="{banner_cls}" data-testid="trust-verdict">{_html.escape(view["banner_te"])}</div>'
-    html = (
-        f'<div class="hero-row" data-testid="bill-hero">'
-        f'<div class="side-tile units"><div class="k">{_html.escape(t("units"))}</div>'
-        f'<div class="v">{_html.escape(view["units_label"])}</div></div>'
-        f'<div class="{card_cls}">'
-        f'<div class="hd"><div class="ico">{icon}</div>'
-        f'<div class="title">{_html.escape(t("you_pay"))}</div></div>'
-        f'<div class="{pay_cls}">{_html.escape(view["payable_display"])}</div>'
-        f"{pill}{banner}"
-        f"</div>"
-        f'<div class="side-tile due"><div class="k">{_html.escape(t("last_date"))}</div>'
-        f'<div class="v date">{_html.escape(view["due"])}</div></div>'
-        f"</div>"
-    )
-    st.markdown(html, unsafe_allow_html=True)
+    st.markdown(dashboard_hero_html(view), unsafe_allow_html=True)
 
 
 def render_hero_card(model: Dict[str, Any], corrections: Optional[List[str]] = None) -> None:
@@ -213,14 +279,19 @@ def render_main_understand(
     c_voice, c_wa = st.columns([1.4, 1])
     with c_voice:
         if spoken:
-            render_voice_note(spoken)
+            render_voice_note(spoken, label="తెలుగులో వినండి / Listen in Telugu")
     with c_wa:
         if st.button("WhatsApp కి పంపండి", width="stretch", key="wa_send_bill"):
             st.session_state["share_now"] = True
             st.rerun()
 
+    view = bill_dashboard_view(model, corrections)
     render_gruha_jyothi_note(model)
-    render_receipt_card(model["bill"], gj_mode=(model.get("gruha_jyothi") or {}).get("mode"))
+    render_receipt_card(
+        model["bill"],
+        gj_mode=(model.get("gruha_jyothi") or {}).get("mode"),
+        show_gj_tip=bool(view.get("show_gj_tip")),
+    )
     tu = (model.get("bill") or {}).get("trueup_charges")
     try:
         tu_n = float(tu) if tu is not None else 0.0
