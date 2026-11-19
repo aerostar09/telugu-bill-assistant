@@ -117,6 +117,7 @@ def bill_dashboard_view(
         "ring_caption": RING_CAPTION,
         "show_due_highlight": theme == "regular",
         "show_gj_tip": theme == "regular",
+        "show_units_bar": theme == "gj",
     }
 
 
@@ -300,7 +301,8 @@ def render_main_understand(
     if abs(tu_n) >= 0.005:
         from draft_features import render_trueup_what_is_it
         render_trueup_what_is_it()
-    render_units_bar(model["bill"])
+    if view.get("show_units_bar"):
+        render_units_bar(model["bill"])
     if rng:
         band = format_rupee_range(rng["low"], rng["high"])
         from gruha_jyothi import gj_forecast_note_te

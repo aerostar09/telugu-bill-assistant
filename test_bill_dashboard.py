@@ -121,6 +121,7 @@ class BillDashboardViewTests(unittest.TestCase):
         self.assertLess(html.index("గృహ జ్యోతి వర్తించింది"), html.index("Gruha Jyothi applied"))
         self.assertFalse(view["show_due_highlight"])
         self.assertFalse(view["show_gj_tip"])
+        self.assertTrue(view["show_units_bar"])
 
     def test_regular_hero_has_no_scheme_pill(self):
         view = bill_dashboard_view(_model(lt_notice()))
@@ -129,6 +130,7 @@ class BillDashboardViewTests(unittest.TestCase):
         self.assertEqual(view["scheme_pill_te"], "")
         self.assertTrue(view["show_due_highlight"])
         self.assertTrue(view["show_gj_tip"])
+        self.assertFalse(view["show_units_bar"])
         html = dashboard_hero_html(view)
         self.assertNotIn("scheme-pill", html)
         self.assertNotIn("గృహ జ్యోతి వర్తించింది", html)
@@ -139,6 +141,23 @@ class BillDashboardViewTests(unittest.TestCase):
         self.assertNotIn("/ 200", ring)
         self.assertNotIn("/200", ring)
         self.assertIn("due-hot", html)
+
+
+    def test_units_bar_only_on_gj_bills(self):
+        """N / 200 meter is for Gruha Jyothi bills only, same signal as the green hero."""
+        gj = bill_dashboard_view(_model(scenario_b()["bill"]))
+        regular = bill_dashboard_view(_model(lt_notice()))
+        self.assertEqual(gj["theme"], "gj")
+        self.assertTrue(gj["show_units_bar"])
+        self.assertEqual(regular["theme"], "regular")
+        self.assertFalse(regular["show_units_bar"])
+        # Printed GJS zero bill uses the same hero detection.
+        printed = bill_dashboard_view(_model(gj_bill()))
+        self.assertEqual(printed["theme"], "gj")
+        self.assertTrue(printed["show_units_bar"])
+        src = Path(__file__).with_name("citizen_ui.py").read_text()
+        self.assertIn('if view.get("show_units_bar"):', src)
+        self.assertIn("render_units_bar(model[\"bill\"])", src)
 
 
 class ReceiptBilingualTests(unittest.TestCase):
