@@ -71,6 +71,11 @@ footer {visibility: hidden;}
 header[data-testid="stHeader"] {background: transparent; display: none !important;}
 div[data-testid="stToolbar"], div[data-testid="stAppDeployButton"], .stAppDeployButton {display: none !important;}
 div[data-testid="stDecoration"] {display: none !important;}
+/* Citizen UI has no sidebar settings; hide the empty Streamlit rail. */
+section[data-testid="stSidebar"],
+div[data-testid="stSidebarCollapsedControl"] { display: none !important; }
+
+.tisc-concept { color: #6b7280; margin: 0.35rem 0 0 0 !important; font-size: 0.8rem !important; font-weight: 500; }
 
 .tisc-hero { margin: 0 0 0.55rem 0; }
 .tisc-hero h1 { font-size: 1.7rem; font-weight: 700; color: #0f3d38; margin: 0 0 .2rem 0; }

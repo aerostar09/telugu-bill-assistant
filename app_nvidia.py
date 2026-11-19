@@ -5,8 +5,10 @@ Flow: upload photo → NVIDIA extract → self-checks → Telugu explanation →
 
 Requires:
   pip install streamlit pillow requests
-  env: NVIDIA_API_KEY
-  optional: SARVAM_API_KEY (Telugu LLM; default OFF after test failures — toggle in sidebar)
+  env: NVIDIA_API_KEY, or PROVIDER=sarvam + SARVAM_API_KEY (vision extract)
+  Telugu text uses the local template (gTTS for voice). The old optional
+  Sarvam-LLM rewrite is not used. Hidden modes: ?demo=1, ?officials=1
+  (alias ?view=discom).
 
 Run:
   streamlit run app_nvidia.py
@@ -44,7 +46,6 @@ from nvidia_pipeline import (
     format_nvidia_user_message,
     NIM_TIMEOUT,
     NIM_MODEL,
-    NIM_FALLBACK_MODEL,
 )
 from scenarios import get_scenario
 from voice import render_voice_note
@@ -729,7 +730,7 @@ def render_citizen_tab(demo: bool, use_sarvam: bool) -> None:
                     st.session_state["prev_result"] = None
                     st.rerun()
         if not demo and uploaded is None:
-            st.info("స్పష్టమైన బిల్లు ఫోటో అప్‌లోడ్ చేయండి, ఒక నమూనా నొక్కండి, లేదా సైడ్‌బార్‌లో డెమో మోడ్ ఆన్ చేయండి.")
+            st.info("స్పష్టమైన బిల్లు ఫోటో అప్‌లోడ్ చేయండి, లేదా కింద ఒక నమూనా బిల్లు నొక్కండి.")
         return
 
     if result.get("scenario"):
@@ -814,6 +815,7 @@ def render_citizen_tab(demo: bool, use_sarvam: bool) -> None:
         )
     with tab_s:
         render_suggestions_section(model)
+        st.caption(f"AI: {_vision_name()}")
 
     # Keep photo preview and sample bills out of the way of the receipt.
     if uploaded is not None:
@@ -831,71 +833,69 @@ def render_citizen_tab(demo: bool, use_sarvam: bool) -> None:
                 st.rerun()
 
 
+_TRUTHY_QUERY = {"1", "true", "yes"}
+
+
+def _qp_get(qp, name: str) -> str:
+    """Read one query param as a string from Streamlit query_params or a dict."""
+    try:
+        val = qp.get(name, "")
+    except Exception:
+        return ""
+    if val is None:
+        return ""
+    if isinstance(val, (list, tuple)):
+        val = val[0] if val else ""
+    return str(val)
+
+
+def parse_hidden_modes(qp) -> Tuple[bool, bool]:
+    """Return (demo, officials) from URL query params. Both default off.
+
+    These modes are not shown as citizen checkboxes. Use ?demo=1 for the
+    PII-free sample bundle, and ?officials=1 (or the older ?view=discom)
+    for the pitch-only DISCOM dashboard.
+    """
+    def truthy(*names: str) -> bool:
+        return any(_qp_get(qp, n).lower() in _TRUTHY_QUERY for n in names)
+
+    demo = truthy("demo")
+    officials = truthy("officials") or _qp_get(qp, "view").lower() == "discom"
+    return demo, officials
+
+
 def main() -> None:
     st.set_page_config(
         page_title="మీ విద్యుత్ బిల్లు సహాయకుడు",
         page_icon="⚡",
         layout="wide",
+        initial_sidebar_state="collapsed",
     )
 
-    # Query param demo=1 auto-loads PII-free Lakshmi data (for screenshots).
-    # ?view=discom opens the pitch-only DISCOM dashboard.
     try:
-        qp = st.query_params
-        demo_q = str(qp.get("demo", "") or "").lower() in {"1", "true", "yes"}
-        discom_q = str(qp.get("view", "") or "").lower() == "discom"
+        demo, discom_mode = parse_hidden_modes(st.query_params)
     except Exception:
-        demo_q = False
-        discom_q = False
+        demo, discom_mode = False, False
 
     if "result" not in st.session_state:
         st.session_state["result"] = None
     if "prev_result" not in st.session_state:
         st.session_state["prev_result"] = None
 
-    with st.sidebar:
-        st.header(t("settings"))
-        demo = st.checkbox(
-            t("demo_mode"),
-            value=demo_q,
-            help="Ground-truth Lakshmi bills + synthetic 13-month history. No NVIDIA call.",
-            key="demo_mode",
-        )
-        if "discom_officials_view" not in st.session_state:
-            st.session_state["discom_officials_view"] = discom_q
-        discom_mode = st.checkbox(
-            "For DISCOM officials (pitch demo)",
-            help="Concept dashboard for the TISC pitch — not shown as a consumer tab.",
-            key="discom_officials_view",
-        )
-        use_sarvam = False
-        with st.expander(t("technical"), expanded=False):
-            use_sarvam = st.checkbox(
-                "Use Sarvam for Telugu (optional, paid — leave OFF)",
-                value=False,
-                help="Falls back to template on error. Leave OFF unless Jay re-approves.",
-                key="use_sarvam",
-            )
-            if not demo:
-                st.caption("AI key: configured yes" if provider_key_configured() else "AI key: configured no")
-            st.caption(
-                f"Vision: `{NIM_MODEL}` · fallback `{NIM_FALLBACK_MODEL}` · "
-                f"timeout {NIM_TIMEOUT}s · hash cache on"
-            )
-            result_side = st.session_state.get("result") or {}
-            if result_side.get("from_cache"):
-                st.caption("ఈ ఫోటో ఫలితం హాష్ కాష్ నుండి వచ్చింది (మళ్లీ NVIDIA కాల్ లేదు).")
-            elif result_side.get("kept_attempt") and not result_side.get("demo"):
-                kept_model = result_side.get("kept_model") or NIM_MODEL
-                st.caption(
-                    f"NVIDIA attempt kept: {result_side.get('kept_attempt')} of "
-                    f"{result_side.get('attempts_used')} (model={kept_model})."
-                )
+    # Sidebar settings (demo, officials, paid Telugu-LLM rewrite) are hidden
+    # from citizens. Demo / officials stay reachable via URL only. use_sarvam
+    # stays False: that old toggle was a separate paid LLM rewrite of the
+    # Telugu text (default OFF, and previously unreliable). It is not the
+    # live PROVIDER=sarvam vision path; bill photos still go through
+    # sarvam_provider when PROVIDER=sarvam.
+    use_sarvam = False
 
     st.markdown(f"<style>{CSS}</style>", unsafe_allow_html=True)
     st.markdown(
         f'<div class="tisc-hero"><h1>⚡ {t("app_title")}</h1>'
-        f"<p>{t('app_tagline')}</p></div>",
+        f"<p>{t('app_tagline')}</p>"
+        f'<p class="tisc-concept">Demo / Concept – not an official TGSPDCL service</p>'
+        f"</div>",
         unsafe_allow_html=True,
     )
 
