@@ -7,7 +7,7 @@ from __future__ import annotations
 from typing import Any, Dict, List, Optional
 
 from post_ocr import line_sum, printed_bill_amount
-from terms import rupees_spoken, word_count, TARIFF_VERSION
+from terms import rupees_spoken, word_count, format_due_date_display, TARIFF_VERSION
 
 # Minimum rupee move to mention a reason on the main screen / in voice.
 _MIN_REASON_RS = 1.0
@@ -216,7 +216,7 @@ def build_voice_summary(
     units = _amt(bill.get("units"))
     if units is not None:
         parts.append(f"{int(round(units))} యూనిట్లు వాడారు.")
-    due = str(bill.get("due_date") or "").strip()
+    due = format_due_date_display(bill.get("due_date"))
     if due:
         parts.append(f"చెల్లించాల్సిన తేదీ {due}.")
     else:

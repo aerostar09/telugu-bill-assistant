@@ -8,7 +8,7 @@ from citizen_ui import bill_dashboard_view, payable_size_class
 from gruha_jyothi import gruha_jyothi_view
 from scenarios import scenario_b
 from self_checks import run_all_checks
-from terms import t
+from terms import t, format_due_date_display
 from test_gjs_subsidy import gj_bill
 from test_lt_notice import lt_notice
 
@@ -83,6 +83,18 @@ class BillDashboardViewTests(unittest.TestCase):
         self.assertEqual(view["payable_display"], "₹12346")
         self.assertEqual(view["pay_size"], "pay-mid")
 
+
+    def test_iso_due_date_displays_as_ddmmyyyy(self):
+        self.assertEqual(format_due_date_display("2026-11-20"), "20/11/2026")
+        self.assertEqual(format_due_date_display("20/11/2026"), "20/11/2026")
+        self.assertEqual(format_due_date_display("20-11-2026"), "20-11-2026")
+        self.assertEqual(format_due_date_display("20-11-26"), "20-11-26")
+        self.assertEqual(format_due_date_display("not-a-date"), "not-a-date")
+        self.assertEqual(format_due_date_display("2026-13-40"), "2026-13-40")
+        self.assertEqual(format_due_date_display(None), "")
+        self.assertEqual(format_due_date_display("  "), "")
+        view = bill_dashboard_view(_model(lt_notice(due_date="2026-11-20")))
+        self.assertEqual(view["due"], "20/11/2026")
 
 class SingleWhatsAppButtonTests(unittest.TestCase):
     def test_only_hero_row_whatsapp_button_key_remains(self):

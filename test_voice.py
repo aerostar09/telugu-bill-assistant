@@ -99,6 +99,13 @@ class VoiceSummaryLengthTests(unittest.TestCase):
         self.assertNotIn("602", text)
         self._assert_voice_is_only_three_facts(text)
 
+    def test_iso_due_date_is_spoken_dmy(self):
+        b = dict(lt_notice())
+        b["due_date"] = "2026-11-20"
+        text = build_voice_summary(b)
+        self.assertIn("చెల్లించాల్సిన తేదీ 20/11/2026.", text)
+        self.assertNotIn("2026-11-20", text)
+
     def test_missing_due_date(self):
         b = dict(lt_notice())
         b["due_date"] = None

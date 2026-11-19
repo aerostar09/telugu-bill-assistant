@@ -14,7 +14,7 @@ from citizen_summary import (
     build_voice_summary,
 )
 from forecast import forecast_display_range, consumer_forecast_range, format_rupee_range
-from terms import t, rupees_display, TARIFF_VERSION
+from terms import t, rupees_display, format_due_date_display, TARIFF_VERSION
 from bill_lines import payable_amount
 from receipt_ui import render_receipt_card, render_units_bar, next_units_cliff
 
@@ -58,9 +58,8 @@ def bill_dashboard_view(
             units_label = str(int(units_f)) if units_f.is_integer() else str(units_f)
         except (TypeError, ValueError):
             units_label = "—"
-    due_raw = bill.get("due_date")
-    due = str(due_raw).strip() if due_raw not in (None, "") else ""
-    if not due or due.lower() == "none":
+    due = format_due_date_display(bill.get("due_date"))
+    if not due:
         due = "—"
     payable = payable_amount(bill)
     gj = model.get("gruha_jyothi") or {}

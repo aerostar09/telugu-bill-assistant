@@ -6,7 +6,11 @@ unless a function is showing a printed paise line.
 """
 from __future__ import annotations
 
+import re
+from datetime import date, datetime
 from typing import Any, Optional
+
+_ISO_DATE = re.compile(r"^(\d{4})-(\d{2})-(\d{2})(?:[T\s].*)?$")
 
 # Official tariff label shown on the calculation tab.
 TARIFF_VERSION = "FY 2026-27 TGERC"
@@ -88,6 +92,33 @@ def rupees_display(n: Any) -> str:
     if n is None:
         return "—"
     return f"₹{int(round(float(n)))}"
+
+
+def format_due_date_display(value: Any) -> str:
+    """Show ISO due dates as DD/MM/YYYY. Other strings pass through.
+
+    Blank / None / "none" return "" so callers can apply their own fallback
+    (hero "—", or the voice missing-date line). Already DD/MM/YYYY and
+    unparseable values are unchanged. Hyphen Indian dates like 20-11-2026
+    are also left as-is.
+    """
+    if value is None:
+        return ""
+    if isinstance(value, datetime):
+        value = value.date()
+    if isinstance(value, date):
+        return value.strftime("%d/%m/%Y")
+    s = str(value).strip()
+    if not s or s.lower() == "none":
+        return ""
+    m = _ISO_DATE.match(s)
+    if not m:
+        return s
+    try:
+        dt = date(int(m.group(1)), int(m.group(2)), int(m.group(3)))
+    except ValueError:
+        return s
+    return dt.strftime("%d/%m/%Y")
 
 
 def word_count(text: str) -> int:
